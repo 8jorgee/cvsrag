@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     admin_password: Optional[str] = None
     max_upload_mb: int = 25
     csrf_secret: Optional[str] = None
+    fuzzy_match_threshold: int = 85  # WRatio threshold for name matching (configurable in .env)
 
     class Config:
         env_file = ".env"

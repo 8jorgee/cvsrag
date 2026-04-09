@@ -3,8 +3,64 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 import pandas as pd
+from unidecode import unidecode
+from rapidfuzz import fuzz
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_name(name: str) -> str:
+    """
+    Normalize name for consistent matching:
+    - Remove accents: François → Francois
+    - Lowercase: Francois → francois
+    - Strip whitespace
+    """
+    if not name:
+        return ""
+    return unidecode(name).lower().strip()
+
+
+def match_availability_fuzzy(
+    parsed_name: str,
+    availability_dict: dict[str, dict],
+    threshold: int = 85
+) -> dict:
+    """
+    Fuzzy match parsed CV name against availability records.
+
+    Returns: matching availability data, or {} if no match
+
+    Strategy:
+    1. Try exact match after normalization (fastest)
+    2. Fall back to fuzzy matching with WRatio if no exact match
+    3. Return first match above threshold
+    """
+    if not parsed_name:
+        return {}
+
+    norm_parsed = normalize_name(parsed_name)
+
+    # Fast path: exact match after normalization
+    if norm_parsed in availability_dict:
+        logger.debug(f"Matched availability for '{parsed_name}' (exact after normalization)")
+        return availability_dict[norm_parsed]
+
+    # Fuzzy match fallback
+    best_match = None
+    best_score = 0
+    for avail_name, avail_data in availability_dict.items():
+        score = fuzz.WRatio(norm_parsed, avail_name)
+        if score > best_score and score >= threshold:
+            best_score = score
+            best_match = avail_name
+
+    if best_match:
+        logger.debug(f"Matched availability for '{parsed_name}' via fuzzy (score {best_score})")
+        return availability_dict[best_match]
+
+    logger.debug(f"No availability match for '{parsed_name}' (threshold {threshold})")
+    return {}
 
 
 class AvailabilityAdapter(ABC):
@@ -34,16 +90,17 @@ class CSVAvailabilityAdapter(AvailabilityAdapter):
 
             result: dict[str, dict] = {}
             for _, row in df.iterrows():
-                name = str(row.get("name", "")).strip().lower()
+                name = str(row.get("name", "")).strip()
                 if not name:
                     continue
 
+                normalized = normalize_name(name)  # Apply normalization
                 avail_pct = row.get("availability_percentage")
                 avail_date = row.get("availability_date")
                 location = row.get("location")
                 grade = row.get("grade")
                 current_project = row.get("current_project")
-                result[name] = {
+                result[normalized] = {
                     "current_project": (
                         str(current_project).strip()
                         if pd.notna(current_project) and str(current_project).strip()
