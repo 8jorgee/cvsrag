@@ -1,9 +1,10 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import Optional
 
 
 class Settings(BaseSettings):
-    anthropic_api_key: str
+    anthropic_api_key: Optional[str] = None
     chroma_db_path: str = "./data/chroma_db"
     cv_directory: str = "./data/cvs"
     availability_file: str = "./data/availability.csv"
@@ -14,9 +15,17 @@ class Settings(BaseSettings):
     admin_username: Optional[str] = None
     admin_password: Optional[str] = None
     max_upload_mb: int = 25
+    csrf_secret: Optional[str] = None
 
     class Config:
         env_file = ".env"
+
+    @field_validator('anthropic_api_key')
+    @classmethod
+    def validate_api_key(cls, v):
+        if not v or v.strip() == "":
+            raise ValueError("ANTHROPIC_API_KEY must be set and non-empty")
+        return v
 
 
 settings = Settings()
