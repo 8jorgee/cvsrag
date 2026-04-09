@@ -4,7 +4,7 @@
 
 **Phase 1: Security & Data Integrity** — Active
 - Plan 01 (Security Hardening): ✓ COMPLETE
-- Plan 02 (Data Integrity Fixes): — Pending
+- Plan 02 (Data Integrity Fixes): ✓ COMPLETE
 
 ## Decisions Log
 
@@ -24,6 +24,7 @@
 | Date | Phase | Plan | Status | Tasks | Commits |
 |------|-------|------|--------|-------|---------|
 | 2026-04-09 | 01-security-data-integrity | 01 | COMPLETE | 6/6 | 5 commits (CSRF, API key, query validation, rate limiting, MIME validation, test infrastructure) |
+| 2026-04-09 | 01-security-data-integrity | 02 | COMPLETE | 6/6 | 6 commits (test stubs, name normalization, atomic upsert, stable IDs, CSV detection, date validation) |
 
 ## Open Questions
 

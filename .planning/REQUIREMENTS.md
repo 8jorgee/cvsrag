@@ -12,11 +12,11 @@
 
 ### Data Integrity (DATA)
 
-- [ ] **DATA-01**: Availability name matching is case-insensitive and accent-insensitive (unidecode normalization)
-- [ ] **DATA-02**: FAISS index and SQLite metadata stay in sync — upsert is atomic (rollback SQLite if FAISS fails)
-- [ ] **DATA-03**: Profile IDs are stable UUIDs derived from parsed profile name, not MD5 of filename
-- [ ] **DATA-04**: Incremental ingestion detects availability CSV row changes, not only CV file hash changes
-- [ ] **DATA-05**: Malformed availability dates cause profile to be excluded from availability filter (not silently pass through)
+- [x] **DATA-01**: Availability name matching is case-insensitive and accent-insensitive (unidecode normalization) (2026-04-09)
+- [x] **DATA-02**: FAISS index and SQLite metadata stay in sync — upsert is atomic (rollback SQLite if FAISS fails) (2026-04-09)
+- [x] **DATA-03**: Profile IDs are stable UUIDs derived from parsed profile name, not MD5 of filename (2026-04-09)
+- [x] **DATA-04**: Incremental ingestion detects availability CSV row changes, not only CV file hash changes (2026-04-09)
+- [x] **DATA-05**: Malformed availability dates cause profile to be excluded from availability filter (not silently pass through) (2026-04-09)
 
 ### Robustness (ROB)
 
