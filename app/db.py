@@ -102,39 +102,69 @@ class VectorCollection:
         documents: list[str],
         metadatas: list[dict],
     ) -> None:
-        """Insert or replace profiles. Rebuilds the FAISS index if any id already exists."""
-        needs_rebuild = False
+        """
+        Insert or replace profiles atomically.
 
-        for doc_id, embedding, document, metadata in zip(
-            ids, embeddings, documents, metadatas
-        ):
-            existing = self._conn.execute(
-                "SELECT id FROM profiles WHERE id = ?", (doc_id,)
-            ).fetchone()
+        Strategy:
+        1. Update SQLite first (transactional)
+        2. If SQLite succeeds, rebuild/append to FAISS
+        3. If FAISS fails, rollback SQLite changes
+        4. Never leave FAISS and SQLite in inconsistent state
+        """
+        try:
+            needs_rebuild = False
 
-            self._conn.execute(
-                """INSERT INTO profiles (id, document, metadata, embedding)
-                   VALUES (?, ?, ?, ?)
-                   ON CONFLICT(id) DO UPDATE SET
-                     document  = excluded.document,
-                     metadata  = excluded.metadata,
-                     embedding = excluded.embedding
-                """,
-                (doc_id, document, json.dumps(metadata), json.dumps(embedding)),
-            )
+            # Step 1: Validate and insert into SQLite
+            for doc_id, embedding, document, metadata in zip(
+                ids, embeddings, documents, metadatas
+            ):
+                existing = self._conn.execute(
+                    "SELECT id FROM profiles WHERE id = ?", (doc_id,)
+                ).fetchone()
 
-            if existing:
-                needs_rebuild = True  # vector must be replaced in FAISS
+                self._conn.execute(
+                    """INSERT INTO profiles (id, document, metadata, embedding)
+                       VALUES (?, ?, ?, ?)
+                       ON CONFLICT(id) DO UPDATE SET
+                         document  = excluded.document,
+                         metadata  = excluded.metadata,
+                         embedding = excluded.embedding
+                    """,
+                    (doc_id, document, json.dumps(metadata), json.dumps(embedding)),
+                )
 
-        self._conn.commit()
+                if existing:
+                    needs_rebuild = True  # Mark index for rebuild
 
-        if needs_rebuild:
-            self._index = self._rebuild_index()
-        else:
-            # Append new vectors to the end of the index
-            new_vecs = np.array(embeddings, dtype=np.float32)
-            self._index.add(new_vecs)
-            faiss.write_index(self._index, str(self._index_path))
+            # Step 2: Commit SQLite transaction
+            self._conn.commit()
+            logger.info(f"Upserted {len(ids)} profiles to SQLite")
+
+            # Step 3: Update FAISS (if SQLite succeeded)
+            try:
+                if needs_rebuild:
+                    self._index = self._rebuild_index()
+                    logger.info(f"Rebuilt FAISS index ({self._index.ntotal} vectors)")
+                else:
+                    # Append new vectors to the end of the index
+                    new_vecs = np.array(embeddings, dtype=np.float32)
+                    self._index.add(new_vecs)
+                    faiss.write_index(self._index, str(self._index_path))
+                    logger.info(f"Added {len(embeddings)} vectors to FAISS")
+
+            except Exception as faiss_error:
+                # FAISS failed — rollback SQLite changes
+                logger.error(f"FAISS operation failed: {faiss_error} — rolling back SQLite")
+                self._conn.rollback()
+                self._index = self._load_or_rebuild_index()  # Restore FAISS from SQLite
+                raise RuntimeError(f"Upsert failed and was rolled back: {faiss_error}")
+
+        except Exception as e:
+            # Catch any other errors and ensure rollback
+            if not isinstance(e, RuntimeError):
+                logger.error(f"Upsert failed: {e}")
+                self._conn.rollback()
+            raise
 
     def query(
         self,
