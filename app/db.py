@@ -16,6 +16,7 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
+import asyncio
 
 import faiss
 import numpy as np
@@ -39,6 +40,7 @@ class VectorCollection:
 
         self._conn = self._open_db()
         self._index = self._load_or_rebuild_index()
+        self._sqlite_write_lock = asyncio.Lock()  # Serialize async SQLite writes
 
     # ─── setup ──────────────────────────────────────────────────────────────
 
@@ -165,6 +167,23 @@ class VectorCollection:
                 logger.error(f"Upsert failed: {e}")
                 self._conn.rollback()
             raise
+
+    async def upsert_async(
+        self,
+        ids: list[str],
+        embeddings: list[list[float]],
+        documents: list[str],
+        metadatas: list[dict],
+    ) -> None:
+        """Async wrapper around synchronous upsert, with SQLite write serialization.
+
+        Acquires _sqlite_write_lock to ensure only one async task writes to SQLite
+        at a time, preventing 'database is locked' errors under concurrent load.
+        """
+        async with self._sqlite_write_lock:  # Only one async writer at a time
+            await asyncio.to_thread(
+                self.upsert, ids, embeddings, documents, metadatas
+            )
 
     def query(
         self,
