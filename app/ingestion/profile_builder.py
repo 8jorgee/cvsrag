@@ -1,12 +1,12 @@
 import json
-import logging
 import re
 
 import google.generativeai as genai
+import structlog
 
 from app.config import settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def parse_json_response(content: str, context: str = "") -> dict | list:
@@ -42,7 +42,7 @@ def parse_json_response(content: str, context: str = "") -> dict | list:
                 continue
 
     # Strategy 3: Give up with context
-    logger.error(f"Failed to parse JSON from {context}. Raw content:\n{content[:500]}...")
+    logger.error("Failed to parse JSON", context=context, content_preview=content[:500])
     raise ValueError(f"Could not parse JSON from {context}: {content[:200]}")
 
 
@@ -116,7 +116,7 @@ def parse_profile_with_claude(
         return parse_json_response(content, context=f"Profile parsing for {name_hint}")
 
     except ValueError as e:
-        logger.error(f"Gemini profile parsing failed to parse JSON for '{name_hint}': {e}")
+        logger.error("Gemini profile parsing failed to parse JSON", name_hint=name_hint, error=str(e))
         # Graceful degradation: return skeleton profile
         return {
             "name": name_hint,
@@ -129,7 +129,7 @@ def parse_profile_with_claude(
             "years_of_experience": None,
         }
     except Exception as e:
-        logger.error(f"Gemini profile parsing failed for '{name_hint}': {e}")
+        logger.error("Gemini profile parsing failed", name_hint=name_hint, error=str(e))
         return {
             "name": name_hint,
             "skills": [],

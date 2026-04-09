@@ -41,10 +41,11 @@ Graph API endpoints used:
 For now: manually copy .pptx files to ./data/cvs/
 """
 
-import logging
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger()
 
 
 class SharePointConnector:

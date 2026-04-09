@@ -1,9 +1,10 @@
 from sentence_transformers import SentenceTransformer
-from app.config import settings
-import logging
 import threading
+import structlog
 
-logger = logging.getLogger(__name__)
+from app.config import settings
+
+logger = structlog.get_logger()
 
 _model: SentenceTransformer | None = None
 _model_lock = threading.Lock()
@@ -13,7 +14,7 @@ def get_model() -> SentenceTransformer:
     global _model
     with _model_lock:  # Acquire lock before checking/initializing
         if _model is None:
-            logger.info(f"Loading embedding model: {settings.embedding_model}")
+            logger.info("Loading embedding model", model=settings.embedding_model)
             _model = SentenceTransformer(settings.embedding_model)
     return _model
 
@@ -32,7 +33,7 @@ def generate_embedding(text: str, collection=None) -> list[float]:
     if collection:
         cached = collection.get_cached_embedding(text)
         if cached:
-            logger.info(f"Embedding cache hit for query: {text[:50]}...")
+            logger.info("Embedding cache hit", query_preview=text[:50])
             return cached
 
     # Cache miss: generate and store
@@ -41,6 +42,6 @@ def generate_embedding(text: str, collection=None) -> list[float]:
 
     if collection:
         collection.set_cached_embedding(text, embedding)
-        logger.info(f"Cached embedding for query: {text[:50]}...")
+        logger.info("Embedding cached", query_preview=text[:50])
 
     return embedding

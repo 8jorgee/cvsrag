@@ -1,10 +1,10 @@
-import logging
 from pathlib import Path
 
+import structlog
 from pptx import Presentation
 from pptx.util import Pt
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # MSO_SHAPE_TYPE.TABLE = 19
 _TABLE_SHAPE_TYPE = 19
@@ -17,7 +17,7 @@ def extract_text_from_pptx(file_path: str) -> dict:
     try:
         prs = Presentation(str(path))
     except Exception as e:
-        logger.error(f"Cannot open {path.name}: {e}")
+        logger.error("Cannot open PPTX file", filename=path.name, error=str(e))
         raise
 
     slides_content = []
@@ -45,7 +45,7 @@ def extract_text_from_pptx(file_path: str) -> dict:
                         if row_texts:
                             slide_texts.append(" | ".join(row_texts))
             except Exception as e:
-                logger.warning(f"Error reading shape in slide {slide_num} of {path.name}: {e}")
+                logger.warning("Error reading shape in slide", slide_num=slide_num, filename=path.name, error=str(e))
                 continue
 
         if slide_texts:

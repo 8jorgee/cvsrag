@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     csrf_secret: Optional[str] = None
     fuzzy_match_threshold: int = 85  # WRatio threshold for name matching (configurable in .env)
     ingest_workers: int = 4  # Number of parallel workers for CV ingestion
+    log_format: str = "console"  # Override with LOG_FORMAT env var: 'console' or 'json'
 
     class Config:
         env_file = ".env"

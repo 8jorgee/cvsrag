@@ -1,12 +1,12 @@
-import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 
 import pandas as pd
+import structlog
 from unidecode import unidecode
 from rapidfuzz import fuzz
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def normalize_name(name: str) -> str:
@@ -43,7 +43,7 @@ def match_availability_fuzzy(
 
     # Fast path: exact match after normalization
     if norm_parsed in availability_dict:
-        logger.debug(f"Matched availability for '{parsed_name}' (exact after normalization)")
+        logger.debug("Availability matched (exact)", name=parsed_name)
         return availability_dict[norm_parsed]
 
     # Fuzzy match fallback
@@ -56,10 +56,10 @@ def match_availability_fuzzy(
             best_match = avail_name
 
     if best_match:
-        logger.debug(f"Matched availability for '{parsed_name}' via fuzzy (score {best_score})")
+        logger.debug("Availability matched (fuzzy)", name=parsed_name, score=best_score)
         return availability_dict[best_match]
 
-    logger.debug(f"No availability match for '{parsed_name}' (threshold {threshold})")
+    logger.debug("No availability match found", name=parsed_name, threshold=threshold)
     return {}
 
 
@@ -79,7 +79,7 @@ class CSVAvailabilityAdapter(AvailabilityAdapter):
     def get_availability(self) -> dict[str, dict]:
         path = Path(self.file_path)
         if not path.exists():
-            logger.warning(f"Availability file not found: {self.file_path}")
+            logger.warning("Availability file not found", file_path=self.file_path)
             return {}
 
         try:
@@ -127,7 +127,7 @@ class CSVAvailabilityAdapter(AvailabilityAdapter):
             return result
 
         except Exception as e:
-            logger.error(f"Error reading availability file '{self.file_path}': {e}")
+            logger.error("Error reading availability file", file_path=self.file_path, error=str(e))
             return {}
 
 

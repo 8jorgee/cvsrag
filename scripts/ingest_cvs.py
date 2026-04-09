@@ -10,12 +10,13 @@ Usage:
 import argparse
 import hashlib
 import json
-import logging
 import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+
+import structlog
 
 # Make app importable from the project root
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -30,12 +31,23 @@ from app.ingestion.profile_builder import parse_profile_with_claude
 from app.ingestion.pptx_parser import extract_text_from_pptx
 from app.search.embeddings import generate_embedding
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
+# Configure structlog for CLI output
+structlog.configure(
+    processors=[
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        structlog.dev.ConsoleRenderer()
+    ],
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
 )
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def file_hash(path: str) -> str:
@@ -81,7 +93,7 @@ def process_cv_file(
         # 1. Extract text
         extracted = extract_text_from_pptx(pptx_path)
         if not extracted["raw_text"].strip():
-            logger.warning(f"No text extracted from {filename}, skipping")
+            logger.warning("No text extracted, skipping", filename=filename)
             return {
                 "status": "skip",
                 "filename": filename,
@@ -144,7 +156,7 @@ def process_cv_file(
         }
 
     except Exception as e:
-        logger.error(f"Error processing {filename}: {e}", exc_info=True)
+        logger.error("Error processing CV file", filename=filename, error=str(e), exc_info=True)
         return {
             "status": "error",
             "filename": filename,
@@ -175,22 +187,22 @@ def derive_profile_id(parsed_name: str, department: str = "") -> str:
 def ingest_cvs(force_reindex: bool = False) -> None:
     cv_dir = Path(settings.cv_directory)
     if not cv_dir.exists():
-        logger.error(f"CV directory not found: {cv_dir}")
+        logger.error("CV directory not found", directory=str(cv_dir))
         sys.exit(1)
 
     pptx_files = list(cv_dir.glob("*.pptx"))
     if not pptx_files:
-        logger.warning(f"No .pptx files found in {cv_dir}")
+        logger.warning("No .pptx files found", directory=str(cv_dir))
         return
 
-    logger.info(f"Found {len(pptx_files)} .pptx file(s) in {cv_dir}")
+    logger.info("CV files found", count=len(pptx_files), directory=str(cv_dir))
 
     collection = get_collection()
 
     # Load availability data and hash it
     avail_adapter = get_availability_adapter(settings.availability_file)
     availability = avail_adapter.get_availability()
-    logger.info(f"Loaded availability for {len(availability)} people")
+    logger.info("Availability data loaded", people_count=len(availability))
 
     # Hash availability file for change detection
     avail_file = Path(settings.availability_file)
@@ -212,7 +224,7 @@ def ingest_cvs(force_reindex: bool = False) -> None:
 
     # Use ThreadPoolExecutor for parallel CV processing
     max_workers = settings.ingest_workers
-    logger.info(f"Starting parallel ingestion with {max_workers} workers")
+    logger.info("Starting parallel ingestion", worker_count=max_workers)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all files to the executor
@@ -234,13 +246,13 @@ def ingest_cvs(force_reindex: bool = False) -> None:
                 result = future.result()
                 results.append(result)
             except Exception as e:
-                logger.error(f"Worker task failed: {e}", exc_info=True)
+                logger.error("Worker task failed", error=str(e), exc_info=True)
                 errors += 1
 
     # Process results and perform serial upserts with lock
     for result in results:
         if result["status"] == "ok":
-            logger.info(f"  OK    {result['name']}")
+            logger.info("CV processed successfully", name=result['name'])
             collection.upsert_threaded(
                 ids=[result["profile_id"]],
                 embeddings=[result["embedding"]],
@@ -249,16 +261,19 @@ def ingest_cvs(force_reindex: bool = False) -> None:
             )
             processed += 1
         elif result["status"] == "skip":
-            logger.info(f"  SKIP  {result['filename']} (unchanged)")
+            logger.info("CV skipped (unchanged)", filename=result['filename'])
             skipped += 1
         elif result["status"] == "error":
-            logger.error(f"    ERR   {result['filename']}: {result.get('error', 'unknown error')}")
+            logger.error("CV processing error", filename=result['filename'], error=result.get('error', 'unknown error'))
             errors += 1
 
     logger.info(
-        f"\nDone — processed: {processed}, skipped: {skipped}, errors: {errors}"
+        "Ingestion completed",
+        processed=processed,
+        skipped=skipped,
+        errors=errors
     )
-    logger.info(f"Total profiles in collection: {collection.count()}")
+    logger.info("Total profiles in collection", count=collection.count())
 
 
 if __name__ == "__main__":

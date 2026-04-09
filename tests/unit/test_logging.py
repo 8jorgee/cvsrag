@@ -9,7 +9,6 @@ import json
 import re
 
 
-@pytest.mark.skip(reason="Structured logging configuration will be tested after implementation")
 def test_json_output():
     """Test that structlog outputs valid JSON in production mode.
 
@@ -50,7 +49,6 @@ def test_json_output():
             pass
 
 
-@pytest.mark.skip(reason="Structured logging configuration will be tested after implementation")
 def test_console_colored():
     """Test that structlog can output colored console logs in dev mode.
 

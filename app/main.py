@@ -8,6 +8,7 @@ from typing import Annotated
 
 import aiofiles
 import magic
+import structlog
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -24,8 +25,50 @@ from app.db import get_collection
 from app.models import SearchQuery
 from app.search import engine
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s - %(message)s")
-logger = logging.getLogger(__name__)
+
+def configure_logging():
+    """Configure structlog based on LOG_FORMAT setting."""
+    if settings.log_format == "json":
+        # Production: JSON renderer
+        structlog.configure(
+            processors=[
+                structlog.stdlib.filter_by_level,
+                structlog.stdlib.add_logger_name,
+                structlog.stdlib.add_log_level,
+                structlog.stdlib.PositionalArgumentsFormatter(),
+                structlog.processors.TimeStamper(fmt="iso"),
+                structlog.processors.StackInfoRenderer(),
+                structlog.processors.format_exc_info,
+                structlog.processors.UnicodeDecoder(),
+                structlog.processors.JSONRenderer()
+            ],
+            context_class=dict,
+            logger_factory=structlog.stdlib.LoggerFactory(),
+            cache_logger_on_first_use=True,
+        )
+    else:
+        # Development: Colored console renderer
+        structlog.configure(
+            processors=[
+                structlog.stdlib.filter_by_level,
+                structlog.stdlib.add_logger_name,
+                structlog.stdlib.add_log_level,
+                structlog.stdlib.PositionalArgumentsFormatter(),
+                structlog.processors.TimeStamper(fmt="iso"),
+                structlog.processors.StackInfoRenderer(),
+                structlog.processors.format_exc_info,
+                structlog.processors.UnicodeDecoder(),
+                structlog.dev.ConsoleRenderer()
+            ],
+            context_class=dict,
+            logger_factory=structlog.stdlib.LoggerFactory(),
+            cache_logger_on_first_use=True,
+        )
+
+
+# Configure logging at startup
+configure_logging()
+logger = structlog.get_logger()
 
 app = FastAPI(title="Team Profile RAG", version="1.0.0")
 
@@ -59,9 +102,9 @@ async def validate_startup():
     try:
         if not settings.gemini_api_key:
             raise ValueError("GEMINI_API_KEY is not set")
-        logger.info("✓ GEMINI_API_KEY validated at startup")
+        logger.info("API key validated", status="valid")
     except Exception as e:
-        logger.error(f"✗ Startup validation failed: {e}")
+        logger.error("Startup validation failed", error=str(e))
         raise
 
 
@@ -354,7 +397,7 @@ async def upload_cv(file: UploadFile = File(...), _: None = Depends(_require_adm
     async with aiofiles.open(dest, "wb") as f:
         await f.write(content)
 
-    logger.info(f"Uploaded CV: {safe_name}")
+    logger.info("CV uploaded", filename=safe_name)
     return JSONResponse({"status": "ok", "filename": safe_name})
 
 
@@ -379,5 +422,5 @@ async def upload_availability(file: UploadFile = File(...), _: None = Depends(_r
     async with aiofiles.open(dest, "wb") as f:
         await f.write(content)
 
-    logger.info(f"Uploaded availability data: {safe_name}")
+    logger.info("Availability data uploaded", filename=safe_name)
     return JSONResponse({"status": "ok", "filename": safe_name})

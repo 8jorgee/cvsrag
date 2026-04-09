@@ -1,8 +1,8 @@
 import json
-import logging
 import re
 
 import google.generativeai as genai
+import structlog
 
 from app.config import settings
 from app.db import get_collection
@@ -10,7 +10,7 @@ from app.models import Profile, SearchQuery, SearchResult
 from app.search.embeddings import generate_embedding
 from app.search.filters import apply_filters
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def parse_json_response(content: str, context: str = "") -> dict | list:
@@ -46,7 +46,7 @@ def parse_json_response(content: str, context: str = "") -> dict | list:
                 continue
 
     # Strategy 3: Give up with context
-    logger.error(f"Failed to parse JSON from {context}. Raw content:\n{content[:500]}...")
+    logger.error("Failed to parse JSON", context=context, content_preview=content[:500])
     raise ValueError(f"Could not parse JSON from {context}: {content[:200]}")
 
 
@@ -306,10 +306,10 @@ def _claude_rerank(query: str, candidates: list[dict]) -> list[SearchResult]:
         return sorted(results, key=lambda r: r.score, reverse=True)
 
     except ValueError as e:
-        logger.error(f"Claude reranking failed to parse JSON: {e}")
+        logger.error("Claude reranking failed to parse JSON", error=str(e))
         return [SearchResult(profile=c["profile"], score=c["score"]) for c in candidates]
     except Exception as e:
-        logger.error(f"Claude reranking failed: {e}")
+        logger.error("Claude reranking failed", error=str(e))
         return [SearchResult(profile=c["profile"], score=c["score"]) for c in candidates]
 
 
@@ -364,5 +364,5 @@ def get_profile_by_id(profile_id: str) -> Profile | None:
             result["ids"][0], result["metadatas"][0], result["documents"][0]
         )
     except Exception as e:
-        logger.error(f"Error fetching profile {profile_id}: {e}")
+        logger.error("Error fetching profile", profile_id=profile_id, error=str(e))
         return None

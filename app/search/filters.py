@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
-import logging
+import structlog
+
 from app.models import SearchQuery
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def apply_filters(candidates: list[dict], query: SearchQuery) -> list[dict]:
@@ -38,14 +39,16 @@ def apply_filters(candidates: list[dict], query: SearchQuery) -> list[dict]:
                     except ValueError as e:
                         # Malformed date — exclude and log warning
                         logger.warning(
-                            f"Malformed availability_date '{avail_date_str}' for profile {profile.name} "
-                            f"(expected ISO format YYYY-MM-DD): {e} — excluding from filter"
+                            "Malformed availability_date, excluding from filter",
+                            profile_name=profile.name,
+                            date_value=avail_date_str,
+                            error=str(e)
                         )
                         continue
 
             elif query.availability_status == "30days":
                 if not avail_date_str:
-                    logger.debug(f"No availability_date for {profile.name} — excluding from filter")
+                    logger.debug("No availability_date, excluding from filter", profile_name=profile.name)
                     continue
                 try:
                     if datetime.fromisoformat(avail_date_str) > now + timedelta(days=30):
@@ -53,14 +56,16 @@ def apply_filters(candidates: list[dict], query: SearchQuery) -> list[dict]:
                 except ValueError as e:
                     # Malformed date — exclude and log warning
                     logger.warning(
-                        f"Malformed availability_date '{avail_date_str}' for profile {profile.name} "
-                        f"(expected ISO format YYYY-MM-DD): {e} — excluding from filter"
+                        "Malformed availability_date, excluding from filter",
+                        profile_name=profile.name,
+                        date_value=avail_date_str,
+                        error=str(e)
                     )
                     continue
 
             elif query.availability_status == "90days":
                 if not avail_date_str:
-                    logger.debug(f"No availability_date for {profile.name} — excluding from filter")
+                    logger.debug("No availability_date, excluding from filter", profile_name=profile.name)
                     continue
                 try:
                     if datetime.fromisoformat(avail_date_str) > now + timedelta(days=90):
@@ -68,8 +73,10 @@ def apply_filters(candidates: list[dict], query: SearchQuery) -> list[dict]:
                 except ValueError as e:
                     # Malformed date — exclude and log warning
                     logger.warning(
-                        f"Malformed availability_date '{avail_date_str}' for profile {profile.name} "
-                        f"(expected ISO format YYYY-MM-DD): {e} — excluding from filter"
+                        "Malformed availability_date, excluding from filter",
+                        profile_name=profile.name,
+                        date_value=avail_date_str,
+                        error=str(e)
                     )
                     continue
 
@@ -87,5 +94,5 @@ def apply_filters(candidates: list[dict], query: SearchQuery) -> list[dict]:
 
         filtered.append(c)
 
-    logger.info(f"Filters applied: {len(filtered)} of {len(candidates)} passed")
+    logger.info("Filters applied", passed=len(filtered), total=len(candidates))
     return filtered

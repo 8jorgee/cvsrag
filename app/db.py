@@ -97,7 +97,7 @@ class VectorCollection:
                 [json.loads(r["embedding"]) for r in rows], dtype=np.float32
             )
             index.add(vecs)
-            logger.debug(f"Rebuilt FAISS index with {index.ntotal} vectors")
+            logger.debug("FAISS index rebuilt", vector_count=index.ntotal)
 
         faiss.write_index(index, str(self._index_path))
         return index
@@ -150,23 +150,23 @@ class VectorCollection:
 
             # Step 2: Commit SQLite transaction
             self._conn.commit()
-            logger.info(f"Upserted {len(ids)} profiles to SQLite")
+            logger.info("Profiles upserted to SQLite", count=len(ids))
 
             # Step 3: Update FAISS (if SQLite succeeded)
             try:
                 if needs_rebuild:
                     self._index = self._rebuild_index()
-                    logger.info(f"Rebuilt FAISS index ({self._index.ntotal} vectors)")
+                    logger.info("FAISS index rebuilt", vector_count=self._index.ntotal)
                 else:
                     # Append new vectors to the end of the index
                     new_vecs = np.array(embeddings, dtype=np.float32)
                     self._index.add(new_vecs)
                     faiss.write_index(self._index, str(self._index_path))
-                    logger.info(f"Added {len(embeddings)} vectors to FAISS")
+                    logger.info("Vectors added to FAISS", count=len(embeddings))
 
             except Exception as faiss_error:
                 # FAISS failed — rollback SQLite changes
-                logger.error(f"FAISS operation failed: {faiss_error} — rolling back SQLite")
+                logger.error("FAISS operation failed, rolling back SQLite", error=str(faiss_error))
                 self._conn.rollback()
                 self._index = self._load_or_rebuild_index()  # Restore FAISS from SQLite
                 raise RuntimeError(f"Upsert failed and was rolled back: {faiss_error}")
@@ -174,7 +174,7 @@ class VectorCollection:
         except Exception as e:
             # Catch any other errors and ensure rollback
             if not isinstance(e, RuntimeError):
-                logger.error(f"Upsert failed: {e}")
+                logger.error("Upsert failed", error=str(e))
                 self._conn.rollback()
             raise
 
