@@ -2,7 +2,9 @@
 
 ## Current Phase
 
-**Phase 1: Security & Data Integrity** — Pending
+**Phase 1: Security & Data Integrity** — Active
+- Plan 01 (Security Hardening): ✓ COMPLETE
+- Plan 02 (Data Integrity Fixes): — Pending
 
 ## Decisions Log
 
@@ -15,10 +17,13 @@
 | 2026-04-09 | Use pytest for test suite | Standard Python testing, integrates well with FastAPI TestClient |
 | 2026-04-09 | Use threading.Lock for embedding model | Simpler than aiosqlite migration, sufficient for current concurrency |
 | 2026-04-09 | Profile IDs based on parsed name UUID | Stable across file renames, avoids duplicate profiles |
+| 2026-04-09 | Use starlette-csrf 3.0.0 for CSRF | Double submit cookie pattern, battle-tested |
 
 ## Phase History
 
-*(empty — no phases completed yet)*
+| Date | Phase | Plan | Status | Tasks | Commits |
+|------|-------|------|--------|-------|---------|
+| 2026-04-09 | 01-security-data-integrity | 01 | COMPLETE | 6/6 | 5 commits (CSRF, API key, query validation, rate limiting, MIME validation, test infrastructure) |
 
 ## Open Questions
 

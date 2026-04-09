@@ -4,11 +4,11 @@
 
 ### Security & Reliability (SEC)
 
-- [ ] **SEC-01**: CSRF tokens added to all HTMX admin forms and validated server-side
-- [ ] **SEC-02**: Search query length capped at 500 characters (HTTP 400 returned for longer queries)
-- [ ] **SEC-03**: `ANTHROPIC_API_KEY` validated at application startup; server refuses to start if missing
-- [ ] **SEC-04**: Rate limiting applied to `/search` endpoint (30 requests/minute per IP)
-- [ ] **SEC-05**: File upload validates content type in addition to extension
+- [x] **SEC-01**: CSRF tokens added to all HTMX admin forms and validated server-side (2026-04-09)
+- [x] **SEC-02**: Search query length capped at 500 characters (HTTP 400 returned for longer queries) (2026-04-09)
+- [x] **SEC-03**: `ANTHROPIC_API_KEY` validated at application startup; server refuses to start if missing (2026-04-09)
+- [x] **SEC-04**: Rate limiting applied to `/search` endpoint (30 requests/minute per IP) (2026-04-09)
+- [x] **SEC-05**: File upload validates content type in addition to extension (2026-04-09)
 
 ### Data Integrity (DATA)
 
