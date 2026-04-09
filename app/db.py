@@ -13,7 +13,6 @@ Public interface (mirrors the subset of ChromaDB's collection API we use):
 """
 
 import json
-import logging
 import sqlite3
 from pathlib import Path
 import asyncio
@@ -22,10 +21,11 @@ from threading import Lock as ThreadingLock
 
 import faiss
 import numpy as np
+import structlog
 
 from app.config import settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 _EMBEDDING_DIM = 384  # all-MiniLM-L6-v2 output dimension
 
@@ -77,11 +77,11 @@ class VectorCollection:
                 # Sanity check: index size must match DB row count
                 db_count = self._conn.execute("SELECT COUNT(*) FROM profiles").fetchone()[0]
                 if index.ntotal == db_count:
-                    logger.debug(f"Loaded FAISS index ({index.ntotal} vectors)")
+                    logger.debug("FAISS index loaded", vector_count=index.ntotal)
                     return index
-                logger.warning("FAISS index size mismatch — rebuilding")
+                logger.warning("FAISS index size mismatch, rebuilding")
             except Exception as e:
-                logger.warning(f"Could not load FAISS index: {e} — rebuilding")
+                logger.warning("Could not load FAISS index, rebuilding", error=str(e))
 
         return self._rebuild_index()
 
