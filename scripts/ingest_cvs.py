@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import sys
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -23,7 +24,7 @@ load_dotenv()
 
 from app.config import settings
 from app.db import get_collection
-from app.ingestion.availability import get_availability_adapter
+from app.ingestion.availability import get_availability_adapter, normalize_name
 from app.ingestion.profile_builder import parse_profile_with_claude
 from app.ingestion.pptx_parser import extract_text_from_pptx
 from app.search.embeddings import generate_embedding
@@ -38,7 +39,27 @@ logger = logging.getLogger(__name__)
 
 def file_hash(path: str) -> str:
     with open(path, "rb") as f:
-        return hashlib.md5(f.read()).hexdigest()
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def derive_profile_id(parsed_name: str, department: str = "") -> str:
+    """
+    Derive stable profile ID from parsed name (not filename).
+
+    UUID5 is deterministic: same input → same ID, even across re-indexing.
+    This ensures renames don't create duplicate profiles.
+    """
+    if not parsed_name:
+        raise ValueError("Profile name required for ID derivation")
+
+    # Normalize name for ID generation (accent-insensitive)
+    normalized = normalize_name(parsed_name)
+
+    # Combine with department for uniqueness (optional)
+    combined = f"{normalized}:{department}".lower().strip()
+
+    # Use UUID5 for stable, deterministic IDs
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, combined))
 
 
 def ingest_cvs(force_reindex: bool = False) -> None:
@@ -96,9 +117,9 @@ def ingest_cvs(force_reindex: bool = False) -> None:
             # 2. Claude-powered structured parsing
             parsed = parse_profile_with_claude(extracted["raw_text"], extracted["name"])
 
-            # 3. Merge availability (match by lowercase name)
+            # 3. Merge availability (match by normalized name)
             name = parsed.get("name", extracted["name"])
-            avail = availability.get(name.lower(), {})
+            avail = availability.get(normalize_name(name), {})
 
             # 4. Build embedding text
             embedding_text = "\n".join([
@@ -112,10 +133,11 @@ def ingest_cvs(force_reindex: bool = False) -> None:
             embedding = generate_embedding(embedding_text)
 
             # 5. Build metadata
-            profile_id = hashlib.md5(filename.encode()).hexdigest()
+            profile_id = derive_profile_id(name, department="")  # Use parsed name
             metadata: dict = {
                 "name": name,
                 "source_file": filename,
+                "profile_id": profile_id,  # Store for reference
                 "skills": json.dumps(parsed.get("skills", [])),
                 "certifications": json.dumps(parsed.get("certifications", [])),
                 "experience_summary": parsed.get("experience_summary", "")[:500],
