@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     max_upload_mb: int = 25
     csrf_secret: Optional[str] = None
     fuzzy_match_threshold: int = 85  # WRatio threshold for name matching (configurable in .env)
+    ingest_workers: int = 4  # Number of parallel workers for CV ingestion
 
     class Config:
         env_file = ".env"
