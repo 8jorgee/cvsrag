@@ -8,6 +8,12 @@
 
 **Requirements:** SEC-01, SEC-02, SEC-03, SEC-04, SEC-05, DATA-01, DATA-02, DATA-03, DATA-04, DATA-05
 
+**Plans:** 2 plans in 2 waves
+
+Plans:
+- [x] 01-PLAN.md — Security hardening (CSRF, API key validation, rate limiting, input validation, MIME type checking)
+- [x] 02-PLAN.md — Data integrity fixes (name normalization, atomic upsert, stable IDs, CSV detection, date validation)
+
 **Success Criteria:**
 1. Admin forms include CSRF tokens and server rejects requests without valid tokens
 2. Application refuses to start without `ANTHROPIC_API_KEY` set
@@ -76,7 +82,7 @@
 
 | # | Phase | Goal | Requirements | Status |
 |---|-------|------|--------------|--------|
-| 1 | Security & Data Integrity | Eliminate security vulnerabilities and data integrity bugs | SEC-01–05, DATA-01–05 | Pending |
+| 1 | Security & Data Integrity | Eliminate security vulnerabilities and data integrity bugs | SEC-01–05, DATA-01–05 | Planned ✓ |
 | 2 | Robustness, Performance & Core Features | Harden system, improve performance, ship first features | ROB-01–05, SEARCH-01–02, FEAT-01,02,07,10 | Pending |
 | 3 | Advanced Features | Export, search history, gap analysis, team builder, diff, SSE | FEAT-03–06, FEAT-08, FEAT-11 | Pending |
 | 4 | Test Suite | 80%+ coverage with pytest | FEAT-09 | Pending |
