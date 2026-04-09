@@ -24,7 +24,11 @@ class Profile(BaseModel):
 
 
 class SearchQuery(BaseModel):
-    query: str
+    query: str = Field(
+        ...,
+        max_length=500,
+        description="Search query (max 500 characters)"
+    )
     mode: str = "smart"  # "smart" or "quick"
     skills: list[str] = Field(default_factory=list)
     certifications: list[str] = Field(default_factory=list)
