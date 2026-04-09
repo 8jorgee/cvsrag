@@ -12,7 +12,7 @@ Reliable, accurate talent search — consultants find the right person for a pro
 
 - **Stack**: FastAPI + Python 3.11, Jinja2 + HTMX, FAISS + SQLite (replaced ChromaDB), sentence-transformers (all-MiniLM-L6-v2), Anthropic Claude claude-sonnet-4-20250514, python-pptx
 - **Scale**: ~70–80 consultant profiles, internal use
-- **State**: Working MVP; needs security hardening, reliability improvements, and new features
+- **State**: Phase 1 complete — security hardened, data integrity fixed. Phase 2 next.
 - **Note**: README says ChromaDB but actual implementation uses custom FAISS + SQLite
 
 ## Requirements
@@ -25,6 +25,16 @@ Reliable, accurate talent search — consultants find the right person for a pro
 - ✓ Admin panel with auth (upload CVs, availability CSV, re-index) — existing
 - ✓ PPTX CV parsing with Claude-powered structured extraction — existing
 - ✓ Docker deployment with volume persistence — existing
+- ✓ CSRF protection on HTMX admin forms — Validated in Phase 1: Security & Data Integrity
+- ✓ Search query length capped at 500 chars — Validated in Phase 1: Security & Data Integrity
+- ✓ ANTHROPIC_API_KEY validated at startup — Validated in Phase 1: Security & Data Integrity
+- ✓ Rate limiting on /search (30 req/min per IP) — Validated in Phase 1: Security & Data Integrity
+- ✓ File upload validates content type (MIME) — Validated in Phase 1: Security & Data Integrity
+- ✓ Availability name matching accent/case-insensitive — Validated in Phase 1: Security & Data Integrity
+- ✓ FAISS+SQLite upsert is atomic with rollback — Validated in Phase 1: Security & Data Integrity
+- ✓ Stable profile IDs (UUID5 from parsed name) — Validated in Phase 1: Security & Data Integrity
+- ✓ Availability CSV delta detection for incremental ingestion — Validated in Phase 1: Security & Data Integrity
+- ✓ Malformed availability dates excluded from filter — Validated in Phase 1: Security & Data Integrity
 
 ### Active
 
