@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     @field_validator('anthropic_api_key')
     @classmethod
     def validate_api_key(cls, v):
-        if not v or v.strip() == "":
+        if v is not None and (not v or v.strip() == ""):
             raise ValueError("ANTHROPIC_API_KEY must be set and non-empty")
         return v
 
