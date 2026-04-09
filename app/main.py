@@ -7,11 +7,17 @@ from pathlib import Path
 from typing import Annotated
 
 import aiofiles
+import magic
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from starlette_csrf import CSRFMiddleware
 
 from app.config import settings
 from app.db import get_collection
@@ -23,10 +29,60 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Team Profile RAG", version="1.0.0")
 
+# ─── Security Middleware ────────────────────────────────────────────────────────
+
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
+# CSRF protection — Double Submit Cookie pattern
+csrf_secret = settings.csrf_secret or "dev-secret-change-in-production"
+app.add_middleware(
+    CSRFMiddleware,
+    secret=csrf_secret,
+)
+
+# ─── Static Files & Templates ──────────────────────────────────────────────────
+
 BASE_DIR = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 admin_security = HTTPBasic(auto_error=False)
+
+
+# ─── Startup & Shutdown ────────────────────────────────────────────────────────
+
+@app.on_event("startup")
+async def validate_startup():
+    """Validate required environment variables at startup."""
+    try:
+        if not settings.anthropic_api_key:
+            raise ValueError("ANTHROPIC_API_KEY is not set")
+        logger.info("✓ ANTHROPIC_API_KEY validated at startup")
+    except Exception as e:
+        logger.error(f"✗ Startup validation failed: {e}")
+        raise
+
+
+# ─── Exception Handlers ─────────────────────────────────────────────────────────
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_error_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Rate limit exceeded: 30 requests per minute per IP"},
+    )
+
+
+# ─── Middleware ─────────────────────────────────────────────────────────────────
+
+@app.middleware("http")
+async def add_csrf_to_context(request: Request, call_next):
+    """Add CSRF token to request context for template injection."""
+    request.state.csrf_token = request.cookies.get("csrf_token", "")
+    response = await call_next(request)
+    return response
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
@@ -72,6 +128,24 @@ def _check_upload_size(content: bytes) -> None:
             status_code=413,
             detail=f"File too large. Max allowed size is {settings.max_upload_mb} MB",
         )
+
+
+def _validate_upload_mime(file: UploadFile, allowed_mimes: set[str]) -> bytes:
+    """Validate file MIME type using magic bytes (not client header)."""
+    # Read file content
+    content = file.file.read()
+    file.file.seek(0)  # Reset for later reads
+
+    # Detect MIME from content (magic bytes)
+    detected_mime = magic.from_buffer(content[:2048], mime=True)
+
+    if detected_mime not in allowed_mimes:
+        raise HTTPException(
+            status_code=415,
+            detail=f"File content is {detected_mime}, not an allowed type. Expected: {', '.join(allowed_mimes)}"
+        )
+
+    return content
 
 
 def _require_admin_auth(
@@ -124,6 +198,7 @@ async def search_page(request: Request):
 
 
 @app.post("/search", response_class=HTMLResponse)
+@limiter.limit("30/minute")
 async def do_search(
     request: Request,
     query: str = Form(""),
@@ -262,14 +337,21 @@ async def upload_cv(file: UploadFile = File(...), _: None = Depends(_require_adm
         raise HTTPException(status_code=400, detail="Missing filename")
 
     safe_name = _safe_upload_name(file.filename, {".pptx"})
-    if not safe_name.lower().endswith(".pptx"):
-        raise HTTPException(status_code=400, detail="Only .pptx files are accepted")
+
+    # Validate MIME type (magic bytes check)
+    content = _validate_upload_mime(
+        file,
+        allowed_mimes={
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        }
+    )
+
+    # Check size
+    _check_upload_size(content)
 
     dest = Path(settings.cv_directory) / safe_name
     dest.parent.mkdir(parents=True, exist_ok=True)
     async with aiofiles.open(dest, "wb") as f:
-        content = await file.read()
-        _check_upload_size(content)
         await f.write(content)
 
     logger.info(f"Uploaded CV: {safe_name}")
@@ -282,14 +364,19 @@ async def upload_availability(file: UploadFile = File(...), _: None = Depends(_r
         raise HTTPException(status_code=400, detail="Missing filename")
 
     safe_name = _safe_upload_name(file.filename, {".csv", ".xlsx"})
-    if not (safe_name.lower().endswith(".csv") or safe_name.lower().endswith(".xlsx")):
-        raise HTTPException(status_code=400, detail="Only CSV or Excel files are accepted")
+
+    # Validate MIME type (magic bytes check) for CSV
+    content = _validate_upload_mime(
+        file,
+        allowed_mimes={"text/plain", "text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+    )
+
+    # Check size
+    _check_upload_size(content)
 
     dest = Path(settings.availability_file)
     dest.parent.mkdir(parents=True, exist_ok=True)
     async with aiofiles.open(dest, "wb") as f:
-        content = await file.read()
-        _check_upload_size(content)
         await f.write(content)
 
     logger.info(f"Uploaded availability data: {safe_name}")

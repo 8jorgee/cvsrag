@@ -92,13 +92,25 @@
 </div>
 
 <script>
+// Get CSRF token from cookie
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+}
+
 async function triggerReindex() {
   const force = document.getElementById('force-reindex').checked;
   const log = document.getElementById('reindex-log');
   log.style.display = 'block';
   log.textContent = 'Running ingestion...';
 
-  const resp = await fetch(`/admin/reindex?force=${force}`, { method: 'POST' });
+  const resp = await fetch(`/admin/reindex?force=${force}`, {
+    method: 'POST',
+    headers: {
+      'X-CSRF-Token': getCookie('csrf_token')
+    }
+  });
   const data = await resp.json();
   log.textContent = data.stdout || data.message || JSON.stringify(data);
   if (data.stderr) log.textContent += '\n\nSTDERR:\n' + data.stderr;
@@ -129,7 +141,13 @@ async function uploadFile(file, endpoint, statusEl) {
   form.append('file', file);
 
   try {
-    const resp = await fetch(endpoint, { method: 'POST', body: form });
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      body: form,
+      headers: {
+        'X-CSRF-Token': getCookie('csrf_token')
+      }
+    });
     const data = await resp.json();
     if (resp.ok) {
       statusEl.textContent = `✅ ${file.name} uploaded successfully.`;
