@@ -382,6 +382,42 @@ async def reindex(force: bool = False, _: None = Depends(_require_admin_auth)):
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 
+@app.get("/admin/reindex-stream")
+async def reindex_stream(request: Request, force: bool = False, _: None = Depends(_require_admin_auth)):
+    """
+    SSE endpoint for streaming re-index progress.
+    Runs ingest_cvs in a background thread and yields SSE events.
+    """
+    async def event_generator():
+        # Collect events as ingest_cvs invokes the callback
+        events = []
+
+        def collect_event(event: dict):
+            events.append(event)
+
+        def stream_events():
+            # Call ingest_cvs with callback
+            ingest_cvs(
+                force_reindex=force,
+                progress_callback=collect_event,
+                cv_dir=settings.cv_directory,
+                availability_file=settings.availability_file,
+            )
+            return events
+
+        # Execute in thread to avoid blocking event loop
+        all_events = await asyncio.to_thread(stream_events)
+
+        # Yield each event as SSE data
+        for event in all_events:
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream"
+    )
+
+
 @app.post("/admin/upload-cv")
 async def upload_cv(file: UploadFile = File(...), _: None = Depends(_require_admin_auth)):
     if not file.filename:
