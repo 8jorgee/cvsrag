@@ -17,6 +17,8 @@ import logging
 import sqlite3
 from pathlib import Path
 import asyncio
+import hashlib
+from threading import Lock as ThreadingLock
 
 import faiss
 import numpy as np
@@ -41,6 +43,7 @@ class VectorCollection:
         self._conn = self._open_db()
         self._index = self._load_or_rebuild_index()
         self._sqlite_write_lock = asyncio.Lock()  # Serialize async SQLite writes
+        self._upsert_lock = ThreadingLock()  # Separate lock for ThreadPoolExecutor parallel ingestion
 
     # ─── setup ──────────────────────────────────────────────────────────────
 
@@ -54,6 +57,13 @@ class VectorCollection:
                 document   TEXT NOT NULL,
                 metadata   TEXT NOT NULL,
                 embedding  TEXT NOT NULL   -- JSON array of floats
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS query_cache (
+                query_hash TEXT PRIMARY KEY,
+                embedding  TEXT NOT NULL,
+                created_at TEXT NOT NULL
             )
         """)
         conn.commit()
@@ -185,6 +195,21 @@ class VectorCollection:
                 self.upsert, ids, embeddings, documents, metadatas
             )
 
+    def upsert_threaded(
+        self,
+        ids: list[str],
+        embeddings: list[list[float]],
+        documents: list[str],
+        metadatas: list[dict],
+    ) -> None:
+        """Thread-safe wrapper for ThreadPoolExecutor parallel ingestion.
+
+        Acquires _upsert_lock to serialize writes when using ThreadPoolExecutor,
+        preventing concurrent database writes that could cause corruption.
+        """
+        with self._upsert_lock:
+            self.upsert(ids, embeddings, documents, metadatas)
+
     def query(
         self,
         query_embeddings: list[list[float]],
@@ -249,6 +274,42 @@ class VectorCollection:
         )
         self._conn.commit()
         self._index = self._rebuild_index()
+
+    # ─── embedding cache ────────────────────────────────────────────────────────
+
+    def get_cached_embedding(self, query_text: str) -> list[float] | None:
+        """Retrieve cached embedding for a query.
+
+        Args:
+            query_text: The query text to look up
+
+        Returns:
+            Embedding as list[float] if found in cache, None otherwise
+        """
+        query_hash = hashlib.sha256(query_text.encode()).hexdigest()
+        row = self._conn.execute(
+            "SELECT embedding FROM query_cache WHERE query_hash = ?",
+            (query_hash,)
+        ).fetchone()
+
+        if row:
+            return json.loads(row["embedding"])
+        return None
+
+    def set_cached_embedding(self, query_text: str, embedding: list[float]) -> None:
+        """Cache an embedding for a query.
+
+        Args:
+            query_text: The query text to cache
+            embedding: The embedding vector as list[float]
+        """
+        query_hash = hashlib.sha256(query_text.encode()).hexdigest()
+        self._conn.execute(
+            """INSERT OR REPLACE INTO query_cache (query_hash, embedding, created_at)
+               VALUES (?, ?, datetime('now'))""",
+            (query_hash, json.dumps(embedding))
+        )
+        self._conn.commit()
 
 
 _collection: VectorCollection | None = None
