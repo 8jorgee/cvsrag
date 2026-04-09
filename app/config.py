@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     cv_directory: str = "./data/cvs"
     availability_file: str = "./data/availability.csv"
     embedding_model: str = "all-MiniLM-L6-v2"
-    llm_model: str = "gemini-2.0-flash"
+    llm_model: str = "gemini-1.5-flash-latest"
     top_k_results: int = 20
     rerank_top_n: int = 10
     admin_username: Optional[str] = None

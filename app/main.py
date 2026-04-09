@@ -1,4 +1,5 @@
 import logging
+import re
 import secrets
 import subprocess
 import sys
@@ -88,6 +89,7 @@ csrf_secret = settings.csrf_secret or "dev-secret-change-in-production"
 app.add_middleware(
     CSRFMiddleware,
     secret=csrf_secret,
+    exempt_urls=[re.compile(r"^/search")],
 )
 
 # ─── Static Files & Templates ──────────────────────────────────────────────────
