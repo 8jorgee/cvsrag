@@ -2,7 +2,7 @@ import json
 import logging
 import re
 
-from anthropic import Anthropic
+import google.generativeai as genai
 
 from app.config import settings
 from app.db import get_collection
@@ -180,7 +180,29 @@ def search(query: SearchQuery) -> list[SearchResult]:
 
 
 def _claude_rerank(query: str, candidates: list[dict]) -> list[SearchResult]:
-    client = Anthropic(api_key=settings.anthropic_api_key)
+    genai.configure(api_key=settings.gemini_api_key)
+    model = genai.GenerativeModel(
+        model_name=settings.llm_model,
+        system_instruction=(
+            "You are a talent matching expert for a consulting firm. "
+            "Rank candidate profiles by relevance to the search query.\n\n"
+            "Important semantic rules:\n"
+            "- 'cloud experience' matches Azure, AWS, GCP\n"
+            "- 'AI/ML' matches machine learning, deep learning, neural networks, LLMs\n"
+            "- 'data engineering' matches Databricks, Spark, ETL, pipelines\n"
+            "- Consider experience depth, not just keyword presence\n\n"
+            "Return a JSON array only, no other text:\n"
+            "[\n"
+            "  {\n"
+            '    "profile_index": 1,\n'
+            '    "score": 0.95,\n'
+            '    "reasoning": "Strong match because...",\n'
+            '    "gaps": "Missing X...",\n'
+            '    "highlighted_skills": ["skill1", "skill2"]\n'
+            "  }\n"
+            "]"
+        ),
+    )
 
     profiles_text = []
     for i, c in enumerate(candidates):
@@ -199,41 +221,13 @@ def _claude_rerank(query: str, candidates: list[dict]) -> list[SearchResult]:
         )
 
     try:
-        response = client.messages.create(
-            model=settings.llm_model,
-            max_tokens=4096,
-            system=(
-                "You are a talent matching expert for a consulting firm. "
-                "Rank candidate profiles by relevance to the search query.\n\n"
-                "Important semantic rules:\n"
-                "- 'cloud experience' matches Azure, AWS, GCP\n"
-                "- 'AI/ML' matches machine learning, deep learning, neural networks, LLMs\n"
-                "- 'data engineering' matches Databricks, Spark, ETL, pipelines\n"
-                "- Consider experience depth, not just keyword presence\n\n"
-                "Return a JSON array only, no other text:\n"
-                "[\n"
-                "  {\n"
-                '    "profile_index": 1,\n'
-                '    "score": 0.95,\n'
-                '    "reasoning": "Strong match because...",\n'
-                '    "gaps": "Missing X...",\n'
-                '    "highlighted_skills": ["skill1", "skill2"]\n'
-                "  }\n"
-                "]"
-            ),
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        f'Search query: "{query}"\n\n'
-                        f"Candidates:\n{''.join(profiles_text)}\n"
-                        "Rank all candidates and explain matches."
-                    ),
-                }
-            ],
+        response = model.generate_content(
+            f'Search query: "{query}"\n\n'
+            f"Candidates:\n{''.join(profiles_text)}\n"
+            "Rank all candidates and explain matches."
         )
 
-        content = response.content[0].text
+        content = response.text
         json_match = re.search(r"\[.*\]", content, re.DOTALL)
         rankings = json.loads(json_match.group() if json_match else content)
 

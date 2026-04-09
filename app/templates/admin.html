@@ -108,7 +108,7 @@ async function triggerReindex() {
   const resp = await fetch(`/admin/reindex?force=${force}`, {
     method: 'POST',
     headers: {
-      'X-CSRF-Token': getCookie('csrf_token')
+      'X-CSRF-Token': getCookie('csrftoken')
     }
   });
   const data = await resp.json();
@@ -145,7 +145,7 @@ async function uploadFile(file, endpoint, statusEl) {
       method: 'POST',
       body: form,
       headers: {
-        'X-CSRF-Token': getCookie('csrf_token')
+        'X-CSRF-Token': getCookie('csrftoken')
       }
     });
     const data = await resp.json();

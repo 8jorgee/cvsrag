@@ -57,9 +57,9 @@ admin_security = HTTPBasic(auto_error=False)
 async def validate_startup():
     """Validate required environment variables at startup."""
     try:
-        if not settings.anthropic_api_key:
-            raise ValueError("ANTHROPIC_API_KEY is not set")
-        logger.info("✓ ANTHROPIC_API_KEY validated at startup")
+        if not settings.gemini_api_key:
+            raise ValueError("GEMINI_API_KEY is not set")
+        logger.info("✓ GEMINI_API_KEY validated at startup")
     except Exception as e:
         logger.error(f"✗ Startup validation failed: {e}")
         raise

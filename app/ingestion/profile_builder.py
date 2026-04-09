@@ -2,7 +2,7 @@ import json
 import logging
 import re
 
-from anthropic import Anthropic
+import google.generativeai as genai
 
 from app.config import settings
 
@@ -29,28 +29,21 @@ Do not include markdown, only return raw JSON.\
 
 
 def parse_profile_with_claude(raw_text: str, name_hint: str) -> dict:
-    """Call Claude to parse raw CV text into structured profile fields."""
-    client = Anthropic(api_key=settings.anthropic_api_key)
+    """Call Gemini to parse raw CV text into structured profile fields."""
+    genai.configure(api_key=settings.gemini_api_key)
+    model = genai.GenerativeModel(
+        model_name=settings.llm_model,
+        system_instruction=_SYSTEM_PROMPT,
+    )
 
     truncated_text = raw_text[:8000]
 
     try:
-        response = client.messages.create(
-            model=settings.llm_model,
-            max_tokens=1024,
-            system=_SYSTEM_PROMPT,
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        f"Name hint (from filename): {name_hint}\n\n"
-                        f"CV Text:\n{truncated_text}"
-                    ),
-                }
-            ],
+        response = model.generate_content(
+            f"Name hint (from filename): {name_hint}\n\nCV Text:\n{truncated_text}"
         )
 
-        content = response.content[0].text.strip()
+        content = response.text.strip()
 
         json_match = re.search(r"\{.*\}", content, re.DOTALL)
         if json_match:
@@ -58,7 +51,7 @@ def parse_profile_with_claude(raw_text: str, name_hint: str) -> dict:
         return json.loads(content)
 
     except Exception as e:
-        logger.error(f"Claude profile parsing failed for '{name_hint}': {e}")
+        logger.error(f"Gemini profile parsing failed for '{name_hint}': {e}")
         return {
             "name": name_hint,
             "skills": [],
