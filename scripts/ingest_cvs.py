@@ -184,28 +184,50 @@ def derive_profile_id(parsed_name: str, department: str = "") -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, combined))
 
 
-def ingest_cvs(force_reindex: bool = False) -> None:
-    cv_dir = Path(settings.cv_directory)
-    if not cv_dir.exists():
-        logger.error("CV directory not found", directory=str(cv_dir))
+def ingest_cvs(
+    force_reindex: bool = False,
+    progress_callback: callable = None,
+    cv_dir: str = None,
+    availability_file: str = None,
+) -> dict:
+    """
+    Ingest CVs with optional progress callback.
+
+    Args:
+        force_reindex: Force re-index all files
+        progress_callback: Optional callback function invoked with progress events
+        cv_dir: CV directory (defaults to settings.cv_directory)
+        availability_file: Availability file path (defaults to settings.availability_file)
+
+    Returns:
+        Dictionary with processed, skipped, errors counts
+    """
+    if cv_dir is None:
+        cv_dir = settings.cv_directory
+    if availability_file is None:
+        availability_file = settings.availability_file
+
+    cv_path = Path(cv_dir)
+    if not cv_path.exists():
+        logger.error("CV directory not found", directory=str(cv_path))
         sys.exit(1)
 
-    pptx_files = list(cv_dir.glob("*.pptx"))
+    pptx_files = list(cv_path.glob("*.pptx"))
     if not pptx_files:
-        logger.warning("No .pptx files found", directory=str(cv_dir))
-        return
+        logger.warning("No .pptx files found", directory=str(cv_path))
+        return {"processed": 0, "skipped": 0, "errors": 0}
 
-    logger.info("CV files found", count=len(pptx_files), directory=str(cv_dir))
+    logger.info("CV files found", count=len(pptx_files), directory=str(cv_path))
 
     collection = get_collection()
 
     # Load availability data and hash it
-    avail_adapter = get_availability_adapter(settings.availability_file)
+    avail_adapter = get_availability_adapter(availability_file)
     availability = avail_adapter.get_availability()
     logger.info("Availability data loaded", people_count=len(availability))
 
     # Hash availability file for change detection
-    avail_file = Path(settings.availability_file)
+    avail_file = Path(availability_file)
     current_avail_hash = file_hash(str(avail_file)) if avail_file.exists() else ""
 
     # Build existing-file index for incremental updates
@@ -260,12 +282,30 @@ def ingest_cvs(force_reindex: bool = False) -> None:
                 metadatas=[result["metadata"]],
             )
             processed += 1
+            if progress_callback:
+                progress_callback({
+                    "file": result["filename"],
+                    "status": "ok",
+                    "count": processed
+                })
         elif result["status"] == "skip":
             logger.info("CV skipped (unchanged)", filename=result['filename'])
             skipped += 1
+            if progress_callback:
+                progress_callback({
+                    "file": result["filename"],
+                    "status": "skip",
+                    "count": processed
+                })
         elif result["status"] == "error":
             logger.error("CV processing error", filename=result['filename'], error=result.get('error', 'unknown error'))
             errors += 1
+            if progress_callback:
+                progress_callback({
+                    "file": result["filename"],
+                    "status": "error",
+                    "error": result.get('error', 'unknown error')
+                })
 
     logger.info(
         "Ingestion completed",
@@ -275,9 +315,21 @@ def ingest_cvs(force_reindex: bool = False) -> None:
     )
     logger.info("Total profiles in collection", count=collection.count())
 
+    # Send final summary event
+    if progress_callback:
+        progress_callback({
+            "done": True,
+            "processed": processed,
+            "skipped": skipped,
+            "errors": errors
+        })
+
+    return {"processed": processed, "skipped": skipped, "errors": errors}
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ingest CV .pptx files into ChromaDB")
     parser.add_argument("--force", action="store_true", help="Force re-index all files")
     args = parser.parse_args()
-    ingest_cvs(force_reindex=args.force)
+    result = ingest_cvs(force_reindex=args.force)
+    logger.info("CLI ingestion result", **result)
