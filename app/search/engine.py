@@ -1,7 +1,7 @@
 import json
 import re
 
-import google.generativeai as genai
+import anthropic
 import structlog
 
 from app.config import settings
@@ -270,30 +270,29 @@ def search(query: SearchQuery, page: int = 1, page_size: int = 10) -> dict:
     }
 
 
+_RERANK_SYSTEM = (
+    "You are a talent matching expert for a consulting firm. "
+    "Rank candidate profiles by relevance to the search query.\n\n"
+    "Important semantic rules:\n"
+    "- 'cloud experience' matches Azure, AWS, GCP\n"
+    "- 'AI/ML' matches machine learning, deep learning, neural networks, LLMs\n"
+    "- 'data engineering' matches Databricks, Spark, ETL, pipelines\n"
+    "- Consider experience depth, not just keyword presence\n\n"
+    "Return a JSON array only, no other text:\n"
+    "[\n"
+    "  {\n"
+    '    "profile_index": 1,\n'
+    '    "score": 0.95,\n'
+    '    "reasoning": "Strong match because...",\n'
+    '    "gaps": "Missing X...",\n'
+    '    "highlighted_skills": ["skill1", "skill2"]\n'
+    "  }\n"
+    "]"
+)
+
+
 def _claude_rerank(query: str, candidates: list[dict]) -> list[SearchResult]:
-    genai.configure(api_key=settings.gemini_api_key)
-    model = genai.GenerativeModel(
-        model_name=settings.llm_model,
-        system_instruction=(
-            "You are a talent matching expert for a consulting firm. "
-            "Rank candidate profiles by relevance to the search query.\n\n"
-            "Important semantic rules:\n"
-            "- 'cloud experience' matches Azure, AWS, GCP\n"
-            "- 'AI/ML' matches machine learning, deep learning, neural networks, LLMs\n"
-            "- 'data engineering' matches Databricks, Spark, ETL, pipelines\n"
-            "- Consider experience depth, not just keyword presence\n\n"
-            "Return a JSON array only, no other text:\n"
-            "[\n"
-            "  {\n"
-            '    "profile_index": 1,\n'
-            '    "score": 0.95,\n'
-            '    "reasoning": "Strong match because...",\n'
-            '    "gaps": "Missing X...",\n'
-            '    "highlighted_skills": ["skill1", "skill2"]\n'
-            "  }\n"
-            "]"
-        ),
-    )
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     profiles_text = []
     for i, c in enumerate(candidates):
@@ -312,13 +311,23 @@ def _claude_rerank(query: str, candidates: list[dict]) -> list[SearchResult]:
         )
 
     try:
-        response = model.generate_content(
-            f'Search query: "{query}"\n\n'
-            f"Candidates:\n{''.join(profiles_text)}\n"
-            "Rank all candidates and explain matches."
+        response = client.messages.create(
+            model=settings.llm_model,
+            max_tokens=2048,
+            system=_RERANK_SYSTEM,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f'Search query: "{query}"\n\n'
+                        f"Candidates:\n{''.join(profiles_text)}\n"
+                        "Rank all candidates and explain matches."
+                    ),
+                }
+            ],
         )
 
-        content = response.text
+        content = response.content[0].text
         rankings = parse_json_response(content, context="Claude reranking response")
 
         results = []

@@ -1,7 +1,7 @@
 import json
 import re
 
-import google.generativeai as genai
+import anthropic
 import structlog
 
 from app.config import settings
@@ -94,11 +94,7 @@ def parse_profile_with_claude(
         slides_content: List of slide text strings for boundary-respecting chunking
         name_hint: Name hint from filename
     """
-    genai.configure(api_key=settings.gemini_api_key)
-    model = genai.GenerativeModel(
-        model_name=settings.llm_model,
-        system_instruction=_SYSTEM_PROMPT,
-    )
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     # Slide-boundary chunking: concatenate slides until 16,000 chars
     truncated_text = chunk_slides_to_16k(slides_content)
@@ -108,15 +104,23 @@ def parse_profile_with_claude(
         truncated_text = raw_text[:16_000]
 
     try:
-        response = model.generate_content(
-            f"Name hint (from filename): {name_hint}\n\nCV Text:\n{truncated_text}"
+        response = client.messages.create(
+            model=settings.llm_model,
+            max_tokens=1024,
+            system=_SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Name hint (from filename): {name_hint}\n\nCV Text:\n{truncated_text}",
+                }
+            ],
         )
 
-        content = response.text.strip()
+        content = response.content[0].text.strip()
         return parse_json_response(content, context=f"Profile parsing for {name_hint}")
 
     except ValueError as e:
-        logger.error("Gemini profile parsing failed to parse JSON", name_hint=name_hint, error=str(e))
+        logger.error("Claude profile parsing failed to parse JSON", name_hint=name_hint, error=str(e))
         # Graceful degradation: return skeleton profile
         return {
             "name": name_hint,
@@ -129,7 +133,7 @@ def parse_profile_with_claude(
             "years_of_experience": None,
         }
     except Exception as e:
-        logger.error("Gemini profile parsing failed", name_hint=name_hint, error=str(e))
+        logger.error("Claude profile parsing failed", name_hint=name_hint, error=str(e))
         return {
             "name": name_hint,
             "skills": [],

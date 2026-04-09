@@ -4,12 +4,12 @@ from typing import Optional
 
 
 class Settings(BaseSettings):
-    gemini_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
     chroma_db_path: str = "./data/chroma_db"
     cv_directory: str = "./data/cvs"
     availability_file: str = "./data/availability.csv"
     embedding_model: str = "all-MiniLM-L6-v2"
-    llm_model: str = "gemini-1.5-flash-latest"
+    llm_model: str = "claude-haiku-4-5-20251001"
     top_k_results: int = 20
     rerank_top_n: int = 10
     admin_username: Optional[str] = None
@@ -23,11 +23,11 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
 
-    @field_validator('gemini_api_key')
+    @field_validator('anthropic_api_key')
     @classmethod
     def validate_api_key(cls, v):
         if v is not None and (not v or v.strip() == ""):
-            raise ValueError("GEMINI_API_KEY must be set and non-empty")
+            raise ValueError("ANTHROPIC_API_KEY must be set and non-empty")
         return v
 
 

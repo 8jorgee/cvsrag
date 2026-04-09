@@ -17,7 +17,7 @@ def client():
 @pytest.fixture
 def mock_api_key(monkeypatch):
     """Mock ANTHROPIC_API_KEY in environment."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-12345")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-12345")  # noqa: kept for test compatibility
 
 
 @pytest.fixture
@@ -71,7 +71,7 @@ def mock_settings(temp_db_dir: Path) -> Settings:
         Settings instance configured for testing.
     """
     return Settings(
-        gemini_api_key="test-key-12345",
+        anthropic_api_key="test-key-12345",
         embedding_model="all-MiniLM-L6-v2",
         chroma_db_path=str(temp_db_dir / "chroma_db"),
         cv_directory=str(temp_db_dir / "cvs"),
