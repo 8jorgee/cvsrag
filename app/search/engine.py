@@ -169,12 +169,37 @@ def _normalize_llm_score(score: object) -> float | None:
     return _clamp01(numeric)
 
 
-def search(query: SearchQuery) -> list[SearchResult]:
+def search(query: SearchQuery, page: int = 1, page_size: int = 10) -> dict:
+    """Search for profiles with pagination support.
+
+    Args:
+        query: SearchQuery object with search parameters
+        page: Page number (1-indexed), defaults to 1
+        page_size: Number of results per page, defaults to 10
+
+    Returns:
+        dict with keys:
+            - results: list[SearchResult] for the current page
+            - total_count: int total number of matching profiles
+            - page: int current page number
+            - page_size: int results per page
+            - has_more: bool whether more pages exist
+    """
+    # Validate pagination parameters
+    page = max(1, page)
+    page_size = max(1, page_size)
+
     collection = get_collection()
     count = collection.count()
 
     if count == 0:
-        return []
+        return {
+            "results": [],
+            "total_count": 0,
+            "page": page,
+            "page_size": page_size,
+            "has_more": False,
+        }
 
     query_embedding = generate_embedding(query.query)
     n_results = min(settings.top_k_results, count)
@@ -186,7 +211,13 @@ def search(query: SearchQuery) -> list[SearchResult]:
     )
 
     if not results["ids"][0]:
-        return []
+        return {
+            "results": [],
+            "total_count": 0,
+            "page": page,
+            "page_size": page_size,
+            "has_more": False,
+        }
 
     query_terms = _extract_query_terms(query.query)
     has_query_terms = len(query_terms) > 0
@@ -209,13 +240,34 @@ def search(query: SearchQuery) -> list[SearchResult]:
     candidates = apply_filters(candidates, query)
 
     if not candidates:
-        return []
+        return {
+            "results": [],
+            "total_count": 0,
+            "page": page,
+            "page_size": page_size,
+            "has_more": False,
+        }
 
     if query.mode == "smart":
         top = candidates[: settings.rerank_top_n]
-        return _claude_rerank(query.query, top)
+        all_results = _claude_rerank(query.query, top)
     else:
-        return [SearchResult(profile=c["profile"], score=c["score"]) for c in candidates]
+        all_results = [SearchResult(profile=c["profile"], score=c["score"]) for c in candidates]
+
+    # Apply pagination to final results
+    total_count = len(all_results)
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    paginated_results = all_results[start_idx:end_idx]
+    has_more = len(all_results) > end_idx
+
+    return {
+        "results": paginated_results,
+        "total_count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "has_more": has_more,
+    }
 
 
 def _claude_rerank(query: str, candidates: list[dict]) -> list[SearchResult]:

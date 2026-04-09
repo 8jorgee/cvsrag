@@ -258,6 +258,7 @@ async def do_search(
     availability_percentage_min: str = Form(""),
     grade: str = Form(""),
     location: str = Form(""),
+    page: str = Form("1"),
 ):
     search_query = SearchQuery(
         query=query,
@@ -270,16 +271,23 @@ async def do_search(
         availability_percentage_min=int(availability_percentage_min) if availability_percentage_min else None,
         grade=grade or None,
         location=location or None,
+        page=int(page) if page else 1,
     )
 
-    results = engine.search(search_query)
+    # Call search with pagination parameters
+    page_num = max(1, int(page) if page else 1)
+    result = engine.search(search_query, page=page_num, page_size=10)
 
     return templates.TemplateResponse(
         "partials/results.html",
         {
             "request": request,
-            "results": results,
+            "results": result["results"],
             "query": query,
+            "total_count": result["total_count"],
+            "page": result["page"],
+            "page_size": result["page_size"],
+            "has_more": result["has_more"],
             "availability_color": _availability_color,
         },
     )

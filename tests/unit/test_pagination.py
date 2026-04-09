@@ -28,8 +28,14 @@ def test_page_size_10():
     # Call search - implementation should eventually support pagination
     result = search(query)
 
-    # For now, just verify that search returns a list of results
-    assert isinstance(result, list), "Search should return a list of SearchResult"
+    # Verify that search returns a dict with pagination metadata
+    assert isinstance(result, dict), "Search should return a dict with pagination data"
+    assert "results" in result, "Result should contain 'results' key"
+    assert "total_count" in result, "Result should contain 'total_count' key"
+    assert "page" in result, "Result should contain 'page' key"
+    assert "page_size" in result, "Result should contain 'page_size' key"
+    assert "has_more" in result, "Result should contain 'has_more' key"
+    assert isinstance(result["results"], list), "Results should be a list"
 
 
 def test_total_count_accurate():
@@ -52,8 +58,12 @@ def test_total_count_accurate():
 
     result = search(query)
 
-    # For now, just verify that search returns results
-    assert isinstance(result, list), "Search should return a list of SearchResult"
+    # Verify that search returns proper pagination structure
+    assert isinstance(result, dict), "Search should return a dict with pagination data"
+    assert "total_count" in result, "Result should contain 'total_count' key"
+    assert isinstance(result["total_count"], int), "total_count should be an integer"
+    # The total_count should be >= the number of results returned
+    assert result["total_count"] >= len(result.get("results", [])), "total_count should be >= results length"
 
 
 def test_has_more_flag():
@@ -76,5 +86,11 @@ def test_has_more_flag():
 
     result = search(query)
 
-    # For now, just verify that search returns results
-    assert isinstance(result, list), "Search should return a list of SearchResult"
+    # Verify that search returns proper pagination structure
+    assert isinstance(result, dict), "Search should return a dict with pagination data"
+    assert "has_more" in result, "Result should contain 'has_more' key"
+    assert isinstance(result["has_more"], bool), "has_more should be a boolean"
+    # If has_more is False, we should have all results on this page
+    if not result["has_more"]:
+        assert len(result.get("results", [])) == result.get("total_count", 0), \
+            "If has_more is False, results length should equal total_count"

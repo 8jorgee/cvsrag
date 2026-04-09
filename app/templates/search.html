@@ -13,7 +13,7 @@
 
     <form id="search-form"
           hx-post="/search"
-          hx-target="#results-container"
+          hx-target="#results"
           hx-swap="innerHTML"
           hx-indicator="#search-spinner">
 
@@ -144,7 +144,7 @@
     </p>
 
     <!-- Results -->
-    <div id="results-container">
+    <div id="results">
       <div class="empty-state">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
