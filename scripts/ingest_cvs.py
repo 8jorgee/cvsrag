@@ -15,6 +15,7 @@ import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 # Make app importable from the project root
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -40,6 +41,115 @@ logger = logging.getLogger(__name__)
 def file_hash(path: str) -> str:
     with open(path, "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()
+
+
+def process_cv_file(
+    pptx_path: str,
+    existing_files: dict,
+    current_avail_hash: str,
+    availability: dict,
+) -> dict:
+    """Process a single CV file: extract, parse, embed, build metadata.
+
+    Args:
+        pptx_path: Path to the CV file
+        existing_files: Dictionary of existing files and their hashes
+        current_avail_hash: Hash of current availability file
+        availability: Availability data dictionary
+
+    Returns:
+        Result dictionary with status, profile_id, embedding, document, metadata, or error info
+    """
+    pptx_path_obj = Path(pptx_path)
+    filename = pptx_path_obj.name
+
+    try:
+        fhash = file_hash(pptx_path)
+
+        # Check if re-indexing needed
+        if filename in existing_files:
+            prev_fhash = existing_files[filename]["file_hash"]
+            prev_avail_hash = existing_files[filename]["availability_hash"]
+
+            # Skip if hashes match
+            if fhash == prev_fhash and current_avail_hash == prev_avail_hash:
+                return {
+                    "status": "skip",
+                    "filename": filename,
+                }
+
+        # 1. Extract text
+        extracted = extract_text_from_pptx(pptx_path)
+        if not extracted["raw_text"].strip():
+            logger.warning(f"No text extracted from {filename}, skipping")
+            return {
+                "status": "skip",
+                "filename": filename,
+            }
+
+        # 2. Claude-powered structured parsing
+        slides_text = [
+            slide["text"] for slide in extracted.get("slides_content", [])
+        ]
+        parsed = parse_profile_with_claude(
+            extracted["raw_text"], slides_text, extracted["name"]
+        )
+
+        # 3. Merge availability
+        name = parsed.get("name", extracted["name"])
+        avail = availability.get(normalize_name(name), {})
+
+        # 4. Build embedding text
+        embedding_text = "\n".join([
+            f"Name: {name}",
+            f"Skills: {', '.join(parsed.get('skills', []))}",
+            f"Certifications: {', '.join(parsed.get('certifications', []))}",
+            f"Experience: {parsed.get('experience_summary', '')}",
+            f"Domains: {', '.join(parsed.get('domains', []))}",
+            extracted["raw_text"][:2000],
+        ])
+        embedding = generate_embedding(embedding_text)
+
+        # 5. Build metadata
+        profile_id = derive_profile_id(name, department="")
+        metadata: dict = {
+            "name": name,
+            "source_file": filename,
+            "profile_id": profile_id,
+            "skills": json.dumps(parsed.get("skills", [])),
+            "certifications": json.dumps(parsed.get("certifications", [])),
+            "experience_summary": parsed.get("experience_summary", "")[:500],
+            "domains": json.dumps(parsed.get("domains", [])),
+            "languages": json.dumps(parsed.get("languages", [])),
+            "education": parsed.get("education", ""),
+            "years_of_experience": parsed.get("years_of_experience") or 0,
+            "file_hash": fhash,
+            "availability_hash": current_avail_hash,
+            "last_updated": datetime.now().isoformat(),
+            "current_project": avail.get("current_project") or "",
+            "availability_date": avail.get("availability_date") or "",
+            "availability_percentage": avail.get("availability_percentage") or 0,
+            "location": avail.get("location") or "",
+            "grade": avail.get("grade") or "",
+        }
+
+        return {
+            "status": "ok",
+            "filename": filename,
+            "profile_id": profile_id,
+            "name": name,
+            "embedding": embedding,
+            "document": extracted["raw_text"],
+            "metadata": metadata,
+        }
+
+    except Exception as e:
+        logger.error(f"Error processing {filename}: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "filename": filename,
+            "error": str(e),
+        }
 
 
 def derive_profile_id(parsed_name: str, department: str = "") -> str:
@@ -95,95 +205,54 @@ def ingest_cvs(force_reindex: bool = False) -> None:
             existing[meta.get("source_file", "")] = {
                 "id": doc_id,
                 "file_hash": meta.get("file_hash", ""),
-                "availability_hash": meta.get("availability_hash", ""),  # NEW
+                "availability_hash": meta.get("availability_hash", ""),
             }
 
     processed = skipped = errors = 0
 
-    for pptx_path in pptx_files:
-        filename = pptx_path.name
-        fhash = file_hash(str(pptx_path))
+    # Use ThreadPoolExecutor for parallel CV processing
+    max_workers = settings.ingest_workers
+    logger.info(f"Starting parallel ingestion with {max_workers} workers")
 
-        # Check if re-indexing needed: CV changed OR availability changed
-        if filename in existing:
-            prev_fhash = existing[filename]["file_hash"]
-            prev_avail_hash = existing[filename]["availability_hash"]
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all files to the executor
+        futures = []
+        for pptx_path in pptx_files:
+            future = executor.submit(
+                process_cv_file,
+                str(pptx_path),
+                existing,
+                current_avail_hash,
+                availability,
+            )
+            futures.append(future)
 
-            # Skip only if BOTH hashes match
-            if fhash == prev_fhash and current_avail_hash == prev_avail_hash:
-                logger.info(f"  SKIP  {filename} (CV and availability unchanged)")
-                skipped += 1
-                continue
-
-        logger.info(f"  PROC  {filename}")
-
-        try:
-            # 1. Extract text
-            extracted = extract_text_from_pptx(str(pptx_path))
-            if not extracted["raw_text"].strip():
-                logger.warning(f"    No text extracted from {filename}, skipping")
+        # Collect results (this blocks until all workers complete)
+        results = []
+        for future in futures:
+            try:
+                result = future.result()
+                results.append(result)
+            except Exception as e:
+                logger.error(f"Worker task failed: {e}", exc_info=True)
                 errors += 1
-                continue
 
-            # 2. Claude-powered structured parsing
-            # Extract slide texts from the slides_content list for boundary-respecting chunking
-            slides_text = [
-                slide["text"] for slide in extracted.get("slides_content", [])
-            ]
-            parsed = parse_profile_with_claude(
-                extracted["raw_text"], slides_text, extracted["name"]
+    # Process results and perform serial upserts with lock
+    for result in results:
+        if result["status"] == "ok":
+            logger.info(f"  OK    {result['name']}")
+            collection.upsert_threaded(
+                ids=[result["profile_id"]],
+                embeddings=[result["embedding"]],
+                documents=[result["document"]],
+                metadatas=[result["metadata"]],
             )
-
-            # 3. Merge availability (match by normalized name)
-            name = parsed.get("name", extracted["name"])
-            avail = availability.get(normalize_name(name), {})
-
-            # 4. Build embedding text
-            embedding_text = "\n".join([
-                f"Name: {name}",
-                f"Skills: {', '.join(parsed.get('skills', []))}",
-                f"Certifications: {', '.join(parsed.get('certifications', []))}",
-                f"Experience: {parsed.get('experience_summary', '')}",
-                f"Domains: {', '.join(parsed.get('domains', []))}",
-                extracted["raw_text"][:2000],
-            ])
-            embedding = generate_embedding(embedding_text)
-
-            # 5. Build metadata
-            profile_id = derive_profile_id(name, department="")  # Use parsed name
-            metadata: dict = {
-                "name": name,
-                "source_file": filename,
-                "profile_id": profile_id,  # Store for reference
-                "skills": json.dumps(parsed.get("skills", [])),
-                "certifications": json.dumps(parsed.get("certifications", [])),
-                "experience_summary": parsed.get("experience_summary", "")[:500],
-                "domains": json.dumps(parsed.get("domains", [])),
-                "languages": json.dumps(parsed.get("languages", [])),
-                "education": parsed.get("education", ""),
-                "years_of_experience": parsed.get("years_of_experience") or 0,
-                "file_hash": fhash,
-                "availability_hash": current_avail_hash,  # NEW - for change detection
-                "last_updated": datetime.now().isoformat(),
-                "current_project": avail.get("current_project") or "",
-                "availability_date": avail.get("availability_date") or "",
-                "availability_percentage": avail.get("availability_percentage") or 0,
-                "location": avail.get("location") or "",
-                "grade": avail.get("grade") or "",
-            }
-
-            # 6. Upsert
-            collection.upsert(
-                ids=[profile_id],
-                embeddings=[embedding],
-                documents=[extracted["raw_text"]],
-                metadatas=[metadata],
-            )
-            logger.info(f"    OK    {name}")
             processed += 1
-
-        except Exception as e:
-            logger.error(f"    ERR   {filename}: {e}", exc_info=True)
+        elif result["status"] == "skip":
+            logger.info(f"  SKIP  {result['filename']} (unchanged)")
+            skipped += 1
+        elif result["status"] == "error":
+            logger.error(f"    ERR   {result['filename']}: {result.get('error', 'unknown error')}")
             errors += 1
 
     logger.info(
