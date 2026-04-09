@@ -77,10 +77,14 @@ def ingest_cvs(force_reindex: bool = False) -> None:
 
     collection = get_collection()
 
-    # Load availability data
+    # Load availability data and hash it
     avail_adapter = get_availability_adapter(settings.availability_file)
     availability = avail_adapter.get_availability()
     logger.info(f"Loaded availability for {len(availability)} people")
+
+    # Hash availability file for change detection
+    avail_file = Path(settings.availability_file)
+    current_avail_hash = file_hash(str(avail_file)) if avail_file.exists() else ""
 
     # Build existing-file index for incremental updates
     existing: dict[str, dict] = {}
@@ -90,7 +94,8 @@ def ingest_cvs(force_reindex: bool = False) -> None:
             meta = all_docs["metadatas"][i]
             existing[meta.get("source_file", "")] = {
                 "id": doc_id,
-                "hash": meta.get("file_hash", ""),
+                "file_hash": meta.get("file_hash", ""),
+                "availability_hash": meta.get("availability_hash", ""),  # NEW
             }
 
     processed = skipped = errors = 0
@@ -99,10 +104,16 @@ def ingest_cvs(force_reindex: bool = False) -> None:
         filename = pptx_path.name
         fhash = file_hash(str(pptx_path))
 
-        if filename in existing and existing[filename]["hash"] == fhash:
-            logger.info(f"  SKIP  {filename} (unchanged)")
-            skipped += 1
-            continue
+        # Check if re-indexing needed: CV changed OR availability changed
+        if filename in existing:
+            prev_fhash = existing[filename]["file_hash"]
+            prev_avail_hash = existing[filename]["availability_hash"]
+
+            # Skip only if BOTH hashes match
+            if fhash == prev_fhash and current_avail_hash == prev_avail_hash:
+                logger.info(f"  SKIP  {filename} (CV and availability unchanged)")
+                skipped += 1
+                continue
 
         logger.info(f"  PROC  {filename}")
 
@@ -146,6 +157,7 @@ def ingest_cvs(force_reindex: bool = False) -> None:
                 "education": parsed.get("education", ""),
                 "years_of_experience": parsed.get("years_of_experience") or 0,
                 "file_hash": fhash,
+                "availability_hash": current_avail_hash,  # NEW - for change detection
                 "last_updated": datetime.now().isoformat(),
                 "current_project": avail.get("current_project") or "",
                 "availability_date": avail.get("availability_date") or "",
