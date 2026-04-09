@@ -11,6 +11,45 @@ from app.search.embeddings import generate_embedding
 from app.search.filters import apply_filters
 
 logger = logging.getLogger(__name__)
+
+
+def parse_json_response(content: str, context: str = "") -> dict | list:
+    """Parse JSON response from LLM, handling markdown-wrapped or clean JSON.
+
+    Strategy 1: Try json.loads() directly (fast path for clean responses)
+    Strategy 2: Extract bracketed content with regex (handles markdown fences)
+    Strategy 3: Raise ValueError with logged context (no silent failures)
+
+    Args:
+        content: Raw response text from LLM
+        context: Description of where this content came from (for logging)
+
+    Returns:
+        dict or list parsed from JSON
+
+    Raises:
+        ValueError: If JSON cannot be parsed from content
+    """
+    # Strategy 1: Direct parse
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        pass
+
+    # Strategy 2: Extract bracketed JSON
+    for pattern in [r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", r"\[.*\]"]:
+        match = re.search(pattern, content, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                continue
+
+    # Strategy 3: Give up with context
+    logger.error(f"Failed to parse JSON from {context}. Raw content:\n{content[:500]}...")
+    raise ValueError(f"Could not parse JSON from {context}: {content[:200]}")
+
+
 _TOKEN_RE = re.compile(r"[a-z0-9+#.\-]{3,}")
 _STOPWORDS = {
     "the",
@@ -228,8 +267,7 @@ def _claude_rerank(query: str, candidates: list[dict]) -> list[SearchResult]:
         )
 
         content = response.text
-        json_match = re.search(r"\[.*\]", content, re.DOTALL)
-        rankings = json.loads(json_match.group() if json_match else content)
+        rankings = parse_json_response(content, context="Claude reranking response")
 
         results = []
         used_indices: set[int] = set()
@@ -267,6 +305,9 @@ def _claude_rerank(query: str, candidates: list[dict]) -> list[SearchResult]:
 
         return sorted(results, key=lambda r: r.score, reverse=True)
 
+    except ValueError as e:
+        logger.error(f"Claude reranking failed to parse JSON: {e}")
+        return [SearchResult(profile=c["profile"], score=c["score"]) for c in candidates]
     except Exception as e:
         logger.error(f"Claude reranking failed: {e}")
         return [SearchResult(profile=c["profile"], score=c["score"]) for c in candidates]

@@ -126,7 +126,13 @@ def ingest_cvs(force_reindex: bool = False) -> None:
                 continue
 
             # 2. Claude-powered structured parsing
-            parsed = parse_profile_with_claude(extracted["raw_text"], extracted["name"])
+            # Extract slide texts from the slides_content list for boundary-respecting chunking
+            slides_text = [
+                slide["text"] for slide in extracted.get("slides_content", [])
+            ]
+            parsed = parse_profile_with_claude(
+                extracted["raw_text"], slides_text, extracted["name"]
+            )
 
             # 3. Merge availability (match by normalized name)
             name = parsed.get("name", extracted["name"])
