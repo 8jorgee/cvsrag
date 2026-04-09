@@ -9,8 +9,11 @@ from typing import Annotated
 import aiofiles
 import magic
 import structlog
+import asyncio
+import json
+
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -24,6 +27,7 @@ from app.config import settings
 from app.db import get_collection
 from app.models import SearchQuery
 from app.search import engine
+from scripts.ingest_cvs import ingest_cvs
 
 
 def configure_logging():
@@ -248,6 +252,8 @@ async def do_search(
     mode: str = Form("smart"),
     skills: list[str] = Form(default=[]),
     certifications: list[str] = Form(default=[]),
+    skills_any: list[str] = Form(default=[]),
+    certifications_any: list[str] = Form(default=[]),
     availability_status: str = Form(""),
     availability_percentage_min: str = Form(""),
     grade: str = Form(""),
@@ -258,6 +264,8 @@ async def do_search(
         mode=mode,
         skills=skills,
         certifications=certifications,
+        skills_any=skills_any,
+        certifications_any=certifications_any,
         availability_status=availability_status or None,
         availability_percentage_min=int(availability_percentage_min) if availability_percentage_min else None,
         grade=grade or None,

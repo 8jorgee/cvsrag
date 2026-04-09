@@ -37,11 +37,17 @@
 
       <!-- Skills -->
       <div class="filter-group">
-        <label class="filter-label">Skills</label>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <label class="filter-label" style="margin: 0;">Skills</label>
+          <button type="button" class="btn-toggle-filter" data-filter="skills"
+                  style="padding: 0.25rem 0.5rem; font-size: 0.75rem; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer;">
+            <span class="badge" id="skills-mode">AND</span>
+          </button>
+        </div>
         <div class="tag-select" id="skills-select">
           {% for skill in all_skills %}
           <label class="tag-option">
-            <input type="checkbox" name="skills" value="{{ skill }}">
+            <input type="checkbox" name="skills" value="{{ skill }}" class="skill-checkbox">
             <span>{{ skill }}</span>
           </label>
           {% endfor %}
@@ -50,11 +56,17 @@
 
       <!-- Certifications -->
       <div class="filter-group">
-        <label class="filter-label">Certifications</label>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+          <label class="filter-label" style="margin: 0;">Certifications</label>
+          <button type="button" class="btn-toggle-filter" data-filter="certifications"
+                  style="padding: 0.25rem 0.5rem; font-size: 0.75rem; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer;">
+            <span class="badge" id="certifications-mode">AND</span>
+          </button>
+        </div>
         <div class="tag-select" id="certs-select">
           {% for cert in all_certifications %}
           <label class="tag-option">
-            <input type="checkbox" name="certifications" value="{{ cert }}">
+            <input type="checkbox" name="certifications" value="{{ cert }}" class="cert-checkbox">
             <span>{{ cert }}</span>
           </label>
           {% endfor %}
@@ -146,6 +158,49 @@
 </div>
 
 <script>
+  // Track filter modes (AND vs OR)
+  const filterModes = {
+    skills: 'AND',
+    certifications: 'AND'
+  };
+
+  // Toggle filter mode between AND and OR
+  function toggleFilterMode(filterName) {
+    const modeSpan = document.getElementById(`${filterName}-mode`);
+
+    if (filterModes[filterName] === 'AND') {
+      filterModes[filterName] = 'OR';
+      modeSpan.textContent = 'OR';
+      // Change all checkboxes in this group to use the _any variant
+      updateFilterFieldNames(filterName, true);
+    } else {
+      filterModes[filterName] = 'AND';
+      modeSpan.textContent = 'AND';
+      // Change all checkboxes back to use the standard name
+      updateFilterFieldNames(filterName, false);
+    }
+  }
+
+  // Update field names based on mode
+  function updateFilterFieldNames(filterName, useAny) {
+    const selector = filterName === 'skills' ? '.skill-checkbox' : '.cert-checkbox';
+    const baseFieldName = filterName;
+    const anyFieldName = `${filterName}_any`;
+
+    document.querySelectorAll(`#${filterName === 'skills' ? 'skills-select' : 'certs-select'} ${selector}`).forEach(input => {
+      input.name = useAny ? anyFieldName : baseFieldName;
+    });
+  }
+
+  // Attach toggle handlers
+  document.querySelectorAll('.btn-toggle-filter').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const filterName = btn.dataset.filter;
+      toggleFilterMode(filterName);
+    });
+  });
+
   // Sync main search bar with hidden form field and trigger on Enter
   const mainSearch = document.getElementById('main-search');
   const hiddenQuery = document.getElementById('hidden-query');
@@ -169,6 +224,13 @@
     document.querySelector('#search-form input[type="range"]').value = 0;
     document.getElementById('avail-pct-label').textContent = '0';
     document.querySelector('input[name="mode"][value="smart"]').checked = true;
+    // Reset filter modes to AND
+    filterModes.skills = 'AND';
+    filterModes.certifications = 'AND';
+    document.getElementById('skills-mode').textContent = 'AND';
+    document.getElementById('certifications-mode').textContent = 'AND';
+    updateFilterFieldNames('skills', false);
+    updateFilterFieldNames('certifications', false);
   }
 </script>
 {% endblock %}

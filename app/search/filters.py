@@ -14,14 +14,28 @@ def apply_filters(candidates: list[dict], query: SearchQuery) -> list[dict]:
     for c in candidates:
         profile = c["profile"]
 
+        # AND logic: ALL skills must be present
         if query.skills:
             profile_skills_lower = [s.lower() for s in profile.skills]
             if not all(s.lower() in profile_skills_lower for s in query.skills):
                 continue
 
+        # OR logic: ANY skill must be present
+        if query.skills_any:
+            profile_skills_lower = [s.lower() for s in profile.skills]
+            if not any(s.lower() in profile_skills_lower for s in query.skills_any):
+                continue
+
+        # AND logic: ALL certifications must be present
         if query.certifications:
             profile_certs_lower = [cert.lower() for cert in profile.certifications]
             if not all(cert.lower() in profile_certs_lower for cert in query.certifications):
+                continue
+
+        # OR logic: ANY certification must be present
+        if query.certifications_any:
+            profile_certs_lower = [cert.lower() for cert in profile.certifications]
+            if not any(cert.lower() in profile_certs_lower for cert in query.certifications_any):
                 continue
 
         if query.availability_status:

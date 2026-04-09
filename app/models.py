@@ -30,12 +30,18 @@ class SearchQuery(BaseModel):
         description="Search query (max 500 characters)"
     )
     mode: str = "smart"  # "smart" or "quick"
+    # AND filters (all required)
     skills: list[str] = Field(default_factory=list)
     certifications: list[str] = Field(default_factory=list)
+    # OR filters (any match)
+    skills_any: list[str] = Field(default_factory=list)
+    certifications_any: list[str] = Field(default_factory=list)
     availability_status: Optional[str] = None  # "now", "30days", "90days"
     availability_percentage_min: Optional[int] = None
     grade: Optional[str] = None
     location: Optional[str] = None
+    # Pagination
+    page: int = Field(default=1, ge=1, description="Page number (1-indexed)")
 
 
 class SearchResult(BaseModel):
