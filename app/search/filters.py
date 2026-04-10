@@ -102,8 +102,9 @@ def apply_filters(candidates: list[dict], query: SearchQuery) -> list[dict]:
             if query.grade.lower() not in profile.grade.lower():
                 continue
 
-        if query.location and profile.location:
-            if query.location.lower() not in profile.location.lower():
+        if query.location:
+            # Exclude profiles with no location data or a non-matching location
+            if not profile.location or query.location.lower() not in profile.location.lower():
                 continue
 
         filtered.append(c)

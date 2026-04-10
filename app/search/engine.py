@@ -55,6 +55,13 @@ def parse_json_response(content: str, context: str = "") -> dict | list:
     raise ValueError(f"Could not parse JSON from {context}: {content[:200]}")
 
 
+# Detect "in Madrid", "from Barcelona", "based in Paris", "located in London" patterns.
+# Requires the city to start with an uppercase letter so "expert in cloud" is not matched.
+_LOCATION_RE = re.compile(
+    r'\b(?:based\s+in|located\s+in|from|in)\s+([A-Z][a-zA-ZÀ-ÿ\s\-]{1,40}?)(?=\s*$|\s*[,;.]|\s+(?:who|and|or|with|that|seeking|looking|available|certified|for))',
+    re.UNICODE,
+)
+
 _TOKEN_RE = re.compile(r"[a-z0-9+#.\-]{3,}")
 _STOPWORDS = {
     "the",
@@ -241,6 +248,15 @@ def search(query: SearchQuery, page: int = 1, page_size: int = 10) -> dict:
                 "score": _calibrate_display_score(blended_score),
             }
         )
+
+    # Extract location from free-text query when not set explicitly via the filter UI.
+    # E.g. "cloud architect in Madrid" → query.location = "Madrid"
+    if not query.location:
+        loc_match = _LOCATION_RE.search(query.query)
+        if loc_match:
+            extracted_location = loc_match.group(1).strip()
+            query = query.model_copy(update={"location": extracted_location})
+            logger.info("Location extracted from query", location=extracted_location)
 
     candidates = apply_filters(candidates, query)
 
