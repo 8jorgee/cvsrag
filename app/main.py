@@ -3,6 +3,8 @@ import re
 import secrets
 import subprocess
 import sys
+import csv
+import io
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated
@@ -23,6 +25,12 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette_csrf import CSRFMiddleware
+
+try:
+    from openpyxl import Workbook
+    OPENPYXL_AVAILABLE = True
+except ImportError:
+    OPENPYXL_AVAILABLE = False
 
 from app.config import settings
 from app.db import get_collection
@@ -341,6 +349,105 @@ async def do_search(
     )
 
     return response
+
+
+@app.post("/export")
+@limiter.limit("10/minute")
+async def export_results(
+    request: Request,
+    query: str = Form(""),
+    mode: str = Form("smart"),
+    skills: list[str] = Form(default=[]),
+    certifications: list[str] = Form(default=[]),
+    skills_any: list[str] = Form(default=[]),
+    certifications_any: list[str] = Form(default=[]),
+    availability_status: str = Form(""),
+    availability_percentage_min: str = Form(""),
+    grade: str = Form(""),
+    location: str = Form(""),
+    export_format: str = Form("csv"),
+):
+    """Export search results as CSV or Excel file."""
+    try:
+        search_query = SearchQuery(
+            query=query,
+            mode=mode,
+            skills=skills,
+            certifications=certifications,
+            skills_any=skills_any,
+            certifications_any=certifications_any,
+            availability_status=availability_status or None,
+            availability_percentage_min=int(availability_percentage_min) if availability_percentage_min else None,
+            grade=grade or None,
+            location=location or None,
+            page=1,
+        )
+
+        # Search with high limit to get all results
+        result = engine.search(search_query, page=1, page_size=1000)
+        results = result["results"]
+
+        # Prepare rows for export
+        rows = []
+        headers = ["Name", "Grade", "Location", "Skills", "Certifications", "Availability %", "Availability Date", "Score", "Match Reasoning"]
+
+        for result_item in results:
+            profile = result_item.profile
+            row = [
+                profile.name,
+                profile.grade or "",
+                profile.location or "",
+                ", ".join(profile.skills) if profile.skills else "",
+                ", ".join(profile.certifications) if profile.certifications else "",
+                str(profile.availability_percentage or 0),
+                profile.availability_date or "",
+                f"{int(result_item.score * 100)}%",
+                result_item.match_reasoning or "",
+            ]
+            rows.append(row)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        if export_format == "xlsx":
+            if not OPENPYXL_AVAILABLE:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Excel export not available. openpyxl library not installed."
+                )
+
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Search Results"
+            ws.append(headers)
+            for row in rows:
+                ws.append(row)
+
+            output = io.BytesIO()
+            wb.save(output)
+            output.seek(0)
+
+            return StreamingResponse(
+                iter([output.getvalue()]),
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment; filename=search-results-{timestamp}.xlsx"}
+            )
+        else:  # CSV format
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(headers)
+            writer.writerows(rows)
+
+            return StreamingResponse(
+                iter([output.getvalue()]),
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename=search-results-{timestamp}.csv"}
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Export failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
 
 @app.get("/profile/{profile_id}", response_class=HTMLResponse)
