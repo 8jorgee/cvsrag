@@ -7,7 +7,68 @@
   <p>No profiles matched your query. Try different keywords or relax the filters.</p>
 </div>
 {% else %}
-<p class="results-count">{{ results|length }} profile{{ 's' if results|length != 1 }} found{% if query %} for "<strong>{{ query }}</strong>"{% endif %}</p>
+<div class="results-header">
+  <p class="results-count">{{ results|length }} profile{{ 's' if results|length != 1 }} found{% if query %} for "<strong>{{ query }}</strong>"{% endif %}</p>
+
+  <!-- Export buttons form -->
+  <form id="export-form" method="post" action="/export" style="display: inline-block;">
+    <!-- Search query and mode -->
+    <input type="hidden" name="query" value="{{ query }}">
+    <input type="hidden" name="mode" value="quick">
+
+    <!-- Filter parameters: skills (AND) -->
+    {% if page_skills %}
+      {% for skill in page_skills %}
+      <input type="hidden" name="skills" value="{{ skill }}">
+      {% endfor %}
+    {% endif %}
+
+    <!-- Filter parameters: certifications (AND) -->
+    {% if page_certifications %}
+      {% for cert in page_certifications %}
+      <input type="hidden" name="certifications" value="{{ cert }}">
+      {% endfor %}
+    {% endif %}
+
+    <!-- Filter parameters: skills (OR) -->
+    {% if page_skills_any %}
+      {% for skill in page_skills_any %}
+      <input type="hidden" name="skills_any" value="{{ skill }}">
+      {% endfor %}
+    {% endif %}
+
+    <!-- Filter parameters: certifications (OR) -->
+    {% if page_certifications_any %}
+      {% for cert in page_certifications_any %}
+      <input type="hidden" name="certifications_any" value="{{ cert }}">
+      {% endfor %}
+    {% endif %}
+
+    <!-- Other filters -->
+    {% if page_availability_status and page_availability_status != 'None' %}
+    <input type="hidden" name="availability_status" value="{{ page_availability_status }}">
+    {% endif %}
+
+    {% if page_availability_percentage_min and page_availability_percentage_min != 'None' and page_availability_percentage_min != '' %}
+    <input type="hidden" name="availability_percentage_min" value="{{ page_availability_percentage_min }}">
+    {% endif %}
+
+    {% if page_grade and page_grade != 'None' %}
+    <input type="hidden" name="grade" value="{{ page_grade }}">
+    {% endif %}
+
+    {% if page_location and page_location != 'None' %}
+    <input type="hidden" name="location" value="{{ page_location }}">
+    {% endif %}
+
+    <button type="submit" name="export_format" value="csv" class="btn-export" style="padding: 0.5rem 1rem; margin-left: 1rem; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">
+      Export CSV
+    </button>
+    <button type="submit" name="export_format" value="xlsx" class="btn-export" style="padding: 0.5rem 1rem; margin-left: 0.5rem; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">
+      Export Excel
+    </button>
+  </form>
+</div>
 
 <div class="results-grid">
 {% for result in results %}

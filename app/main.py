@@ -334,6 +334,14 @@ async def do_search(
             "page_size": result["page_size"],
             "has_more": result["has_more"],
             "availability_color": _availability_color,
+            "page_skills": skills,
+            "page_certifications": certifications,
+            "page_skills_any": skills_any,
+            "page_certifications_any": certifications_any,
+            "page_availability_status": availability_status or None,
+            "page_availability_percentage_min": availability_percentage_min or None,
+            "page_grade": grade or None,
+            "page_location": location or None,
         },
     )
 
