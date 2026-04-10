@@ -1,5 +1,8 @@
 import json
 import re
+import sqlite3
+import uuid
+from datetime import datetime
 
 import anthropic
 import groq
@@ -451,3 +454,123 @@ def get_profile_by_id(profile_id: str) -> Profile | None:
     except Exception as e:
         logger.error("Error fetching profile", profile_id=profile_id, error=str(e))
         return None
+
+
+# ─── Session Management ─────────────────────────────────────────────────────
+
+def get_or_create_session(db_conn: sqlite3.Connection, session_id: str | None) -> str:
+    """Get or create a session.
+
+    Args:
+        db_conn: SQLite connection
+        session_id: Existing session ID or None
+
+    Returns:
+        Valid session ID (existing or newly created)
+    """
+    now = datetime.now().isoformat()
+
+    # Check if session exists
+    if session_id:
+        row = db_conn.execute(
+            "SELECT id FROM search_sessions WHERE id = ?",
+            (session_id,)
+        ).fetchone()
+        if row:
+            # Update last_accessed timestamp
+            db_conn.execute(
+                "UPDATE search_sessions SET last_accessed = ? WHERE id = ?",
+                (now, session_id)
+            )
+            db_conn.commit()
+            return session_id
+
+    # Create new session
+    new_session_id = str(uuid.uuid4())
+    db_conn.execute(
+        "INSERT INTO search_sessions (id, created_at, last_accessed) VALUES (?, ?, ?)",
+        (new_session_id, now, now)
+    )
+    db_conn.commit()
+    return new_session_id
+
+
+def log_search_query(
+    db_conn: sqlite3.Connection,
+    session_id: str,
+    query: SearchQuery,
+    results_count: int
+) -> None:
+    """Log a search query to the database.
+
+    Automatically truncates session history to last 20 queries.
+
+    Args:
+        db_conn: SQLite connection
+        session_id: Session ID
+        query: SearchQuery object
+        results_count: Number of results returned
+    """
+    now = datetime.now().isoformat()
+    filters = {
+        "skills": query.skills,
+        "certifications": query.certifications,
+        "skills_any": query.skills_any,
+        "certifications_any": query.certifications_any,
+        "availability_status": query.availability_status,
+        "availability_percentage_min": query.availability_percentage_min,
+        "grade": query.grade,
+        "location": query.location,
+    }
+
+    db_conn.execute(
+        """INSERT INTO search_queries
+           (session_id, query_text, mode, filters_json, created_at, results_count)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (session_id, query.query, query.mode, json.dumps(filters), now, results_count)
+    )
+    db_conn.commit()
+
+    # Truncate to last 20 queries for this session
+    db_conn.execute(
+        """DELETE FROM search_queries
+           WHERE session_id = ? AND id NOT IN (
+               SELECT id FROM search_queries
+               WHERE session_id = ?
+               ORDER BY created_at DESC
+               LIMIT 20
+           )""",
+        (session_id, session_id)
+    )
+    db_conn.commit()
+
+
+def get_search_history(db_conn: sqlite3.Connection, session_id: str) -> list[dict]:
+    """Get search history for a session.
+
+    Args:
+        db_conn: SQLite connection
+        session_id: Session ID
+
+    Returns:
+        List of dicts with keys: id, query_text, mode, created_at, results_count
+    """
+    rows = db_conn.execute(
+        """SELECT id, query_text, mode, created_at, results_count
+           FROM search_queries
+           WHERE session_id = ?
+           ORDER BY created_at DESC
+           LIMIT 20""",
+        (session_id,)
+    ).fetchall()
+
+    return [
+        {
+            "id": row[0],
+            "query_text": row[1],
+            "mode": row[2],
+            "created_at": row[3],
+            "results_count": row[4],
+        }
+        for row in rows
+    ]
