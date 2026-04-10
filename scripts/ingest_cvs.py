@@ -30,6 +30,7 @@ from app.ingestion.availability import get_availability_adapter, normalize_name
 from app.ingestion.profile_builder import parse_profile_with_claude
 from app.ingestion.pptx_parser import extract_text_from_pptx
 from app.search.embeddings import generate_embedding
+from app.search import engine
 
 # Configure structlog for CLI output
 structlog.configure(
@@ -275,12 +276,47 @@ def ingest_cvs(
     for result in results:
         if result["status"] == "ok":
             logger.info("CV processed successfully", name=result['name'])
+
+            profile_id = result["profile_id"]
+            filename = result["filename"]
+
+            # Capture profile snapshot BEFORE upserting (preserve old version if this is a re-index)
+            engine.snapshot_profile_before_update(
+                collection._conn,
+                profile_id,
+                source_file=filename
+            )
+
+            # Upsert the new profile metadata and embedding
             collection.upsert_threaded(
-                ids=[result["profile_id"]],
+                ids=[profile_id],
                 embeddings=[result["embedding"]],
                 documents=[result["document"]],
                 metadatas=[result["metadata"]],
             )
+
+            # Store new version snapshot after upsert succeeds
+            # Check if this profile already had versions
+            max_version = collection._conn.execute(
+                "SELECT MAX(version) FROM profile_history WHERE profile_id = ?",
+                (profile_id,)
+            ).fetchone()[0]
+
+            if max_version is None:
+                # First snapshot: version 1
+                next_version = 1
+            else:
+                # Re-index: previous snapshot was the "before" version, now store "after" as next version
+                next_version = max_version + 1
+
+            engine.store_profile_snapshot(
+                collection._conn,
+                profile_id,
+                result["metadata"],
+                source_file=filename,
+                version=next_version
+            )
+
             processed += 1
             if progress_callback:
                 progress_callback({
