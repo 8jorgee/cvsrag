@@ -235,7 +235,12 @@ async def search_page(request: Request):
     grades = engine.get_all_grades() if total > 0 else []
     locations = engine.get_all_locations() if total > 0 else []
 
-    return templates.TemplateResponse(
+    # Session management: get or create session and retrieve history
+    session_id = request.cookies.get("session_id")
+    session_id = engine.get_or_create_session(collection._conn, session_id)
+    search_history = engine.get_search_history(collection._conn, session_id)
+
+    response = templates.TemplateResponse(
         "search.html",
         {
             "request": request,
@@ -244,8 +249,23 @@ async def search_page(request: Request):
             "all_certifications": certifications,
             "all_grades": grades,
             "all_locations": locations,
+            "session_id": session_id,
+            "search_history": search_history,
         },
     )
+
+    # Set session cookie (30-day expiry)
+    response.set_cookie(
+        "session_id",
+        session_id,
+        max_age=2592000,  # 30 days in seconds
+        path="/",
+        httponly=True,
+        secure=True,
+        samesite="Lax"
+    )
+
+    return response
 
 
 @app.post("/search", response_class=HTMLResponse)
