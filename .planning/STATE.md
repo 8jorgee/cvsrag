@@ -2,18 +2,22 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Phase 2 Complete — Ready for Phase 3
-last_updated: "2026-04-09T20:00:00.000Z"
+status: Executing Phase 3
+last_updated: "2026-04-10T06:35:54Z"
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 22
-  completed_plans: 12
+  total_plans: 16
+  completed_plans: 14
 ---
 
 # Project State
 
 ## Current Phase
+
+**Phase 3: Advanced Features** — In Progress
+
+- Plan 01 (Export + Search History): ✓ COMPLETE
 
 **Phase 2: Robustness, Performance & Core Features** — ✓ COMPLETE (verified)
 
@@ -42,6 +46,9 @@ progress:
 | 2026-04-09 | Use threading.Lock for embedding model | Simpler than aiosqlite migration, sufficient for current concurrency |
 | 2026-04-09 | Profile IDs based on parsed name UUID | Stable across file renames, avoids duplicate profiles |
 | 2026-04-09 | Use starlette-csrf 3.0.0 for CSRF | Double submit cookie pattern, battle-tested |
+| 2026-04-10 | Session ID format: UUID4 + cookie storage | Better isolation than hash-based; 30-day httponly cookie |
+| 2026-04-10 | Export format: CSV + XLSX (openpyxl optional) | CSV for universal compatibility; Excel for users with office tools |
+| 2026-04-10 | History storage: JSON filter object per query | Lossless restoration of complex filters (AND/OR modes) |
 
 ## Phase History
 
@@ -59,6 +66,7 @@ progress:
 | 2026-04-09 | 02-robustness-performance-core-features | 08 | COMPLETE | 4/4 | 1 commit (pagination in engine.py, Load More HTMX pattern) |
 | 2026-04-09 | 02-robustness-performance-core-features | 09 | COMPLETE | 3/3 | 1 commit (skills_any/certifications_any OR filter, AND/OR toggle UI) |
 | 2026-04-09 | 02-robustness-performance-core-features | 10 | COMPLETE | 4/4 | 3 commits (SSE /admin/reindex-stream, EventSource admin.html) |
+| 2026-04-10 | 03-advanced-features | 01 | COMPLETE | 7/7 | 7 commits (DB schema, session functions, /search tracking, GET /, /export endpoint, history dropdown, export buttons) |
 
 ## Open Questions
 
