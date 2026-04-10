@@ -9,6 +9,7 @@
     <p>Describe your project and required skills, and we'll suggest an optimal team from your available consultants.</p>
 
     <form method="post" action="/team-builder">
+      <input type="hidden" name="csrftoken" id="team-csrf-token" value="">
       <fieldset>
         <label for="project-desc"><strong>Project Description</strong></label>
         <textarea
@@ -349,4 +350,11 @@
     margin: 0;
   }
 </style>
+<script>
+  (function() {
+    var token = document.cookie.split('; ').find(function(r) { return r.startsWith('csrftoken='); });
+    var el = document.getElementById('team-csrf-token');
+    if (el && token) el.value = token.split('=')[1];
+  })();
+</script>
 {% endblock %}

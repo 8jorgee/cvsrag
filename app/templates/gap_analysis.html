@@ -11,6 +11,7 @@
     <p>Enter the skills your project requires, and we'll show you which team members cover each skill.</p>
 
     <form method="post" action="/gap-analysis">
+      <input type="hidden" name="csrftoken" id="gap-csrf-token" value="">
       <div class="form-group">
         <label for="skills_input">Required Skills:</label>
         <textarea
@@ -399,4 +400,11 @@
     }
   }
 </style>
+<script>
+  (function() {
+    var token = document.cookie.split('; ').find(function(r) { return r.startsWith('csrftoken='); });
+    var el = document.getElementById('gap-csrf-token');
+    if (el && token) el.value = token.split('=')[1];
+  })();
+</script>
 {% endblock %}

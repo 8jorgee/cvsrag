@@ -140,7 +140,7 @@ class VectorCollection:
             if history_count == 0:
                 # Get all existing profiles
                 profiles = conn.execute(
-                    "SELECT id, metadata, source_file FROM profiles"
+                    "SELECT id, metadata FROM profiles"
                 ).fetchall()
 
                 if profiles:
@@ -150,7 +150,7 @@ class VectorCollection:
                     for profile_row in profiles:
                         profile_id = profile_row["id"]
                         metadata_json = profile_row["metadata"]
-                        source_file = profile_row["source_file"] or ""
+                        source_file = ""
 
                         # Insert version 1 for this profile
                         conn.execute(

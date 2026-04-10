@@ -356,10 +356,13 @@ def _claude_rerank(query: str, candidates: list[dict]) -> list[SearchResult]:
             ),
         )
         rankings = parse_json_response(content, context="LLM reranking response")
+        if isinstance(rankings, dict):
+            # LLM wrapped the array in an object — extract the list
+            rankings = next((v for v in rankings.values() if isinstance(v, list)), [])
 
         results = []
         used_indices: set[int] = set()
-        for ranking in sorted(rankings, key=lambda x: x.get("score", 0), reverse=True):
+        for ranking in sorted(rankings, key=lambda x: x.get("score", 0) if isinstance(x, dict) else 0, reverse=True):
             idx = ranking.get("profile_index", 0) - 1
             if 0 <= idx < len(candidates):
                 c = candidates[idx]
