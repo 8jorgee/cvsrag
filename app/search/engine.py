@@ -803,3 +803,243 @@ def suggest_team_composition(
     except Exception as e:
         logger.error("Team composition suggestion failed", error=str(e))
         return {"error": f"Team composition failed: {str(e)}"}
+
+
+# ─── Profile History & Versioning ──────────────────────────────────────────────
+
+
+def snapshot_profile_before_update(db_conn: sqlite3.Connection, profile_id: str, source_file: str = "") -> None:
+    """Capture the current profile metadata as a snapshot before updating.
+
+    If the profile exists and has a previous version, stores the old version in profile_history.
+    If this is the first snapshot (version 1), skips (will be captured after upsert succeeds).
+
+    Args:
+        db_conn: SQLite connection
+        profile_id: Profile ID to snapshot
+        source_file: Optional source filename
+    """
+    try:
+        # Get current profile metadata
+        profile_row = db_conn.execute(
+            "SELECT metadata FROM profiles WHERE id = ?",
+            (profile_id,)
+        ).fetchone()
+
+        if not profile_row:
+            # Profile doesn't exist yet (first time), skip (version 1 will be created after upsert)
+            return
+
+        # Check if this profile already has history
+        max_version = db_conn.execute(
+            "SELECT MAX(version) FROM profile_history WHERE profile_id = ?",
+            (profile_id,)
+        ).fetchone()[0]
+
+        if max_version is None:
+            # No history yet, this will become version 1 after upsert
+            return
+
+        # Profile has history, so this is a re-index: store old version before overwriting
+        next_version = max_version + 1
+        metadata_json = profile_row["metadata"]
+        now = datetime.now().isoformat()
+
+        db_conn.execute(
+            """INSERT INTO profile_history
+               (profile_id, version, metadata_json, created_at, source_file)
+               VALUES (?, ?, ?, ?, ?)""",
+            (profile_id, next_version, metadata_json, now, source_file)
+        )
+        db_conn.commit()
+        logger.info("Profile snapshot captured before update", profile_id=profile_id, version=next_version)
+
+    except Exception as e:
+        logger.error("Failed to snapshot profile before update", profile_id=profile_id, error=str(e))
+        # Don't raise — allow re-index to continue even if snapshot fails
+
+
+def store_profile_snapshot(
+    db_conn: sqlite3.Connection,
+    profile_id: str,
+    metadata: dict,
+    source_file: str = "",
+    version: int = 1
+) -> None:
+    """Store a profile metadata snapshot in profile_history.
+
+    Helper to insert new snapshots during re-indexing.
+
+    Args:
+        db_conn: SQLite connection
+        profile_id: Profile ID
+        metadata: Complete metadata dict
+        source_file: CV filename that produced this version
+        version: Version number (typically 1 for initial snapshot)
+    """
+    try:
+        now = datetime.now().isoformat()
+        db_conn.execute(
+            """INSERT INTO profile_history
+               (profile_id, version, metadata_json, created_at, source_file)
+               VALUES (?, ?, ?, ?, ?)""",
+            (profile_id, version, json.dumps(metadata), now, source_file)
+        )
+        db_conn.commit()
+        logger.debug("Profile snapshot stored", profile_id=profile_id, version=version)
+
+    except Exception as e:
+        logger.error("Failed to store profile snapshot", profile_id=profile_id, version=version, error=str(e))
+        # Don't raise — allow operation to continue
+
+
+def get_profile_diff(db_conn: sqlite3.Connection, profile_id: str) -> dict:
+    """Get field-level diff between latest and previous profile versions.
+
+    Returns a dict with current version, previous version, and computed diff.
+    If only one version exists, returns {"current": metadata, "previous": None, "current_version": 1, "previous_version": None}.
+
+    Args:
+        db_conn: SQLite connection
+        profile_id: Profile ID to diff
+
+    Returns:
+        Dictionary with diff data:
+        {
+            "current_version": int,
+            "previous_version": int or None,
+            "current": dict (metadata),
+            "previous": dict or None,
+            "diff": {
+                "skills": {"added": [...], "removed": [...], "unchanged": [...]},
+                "certifications": {"added": [...], "removed": [...], "unchanged": [...]},
+                "experience_summary": {"changed": bool, "old": str, "new": str},
+                "education": {"changed": bool, "old": str, "new": str},
+                "years_of_experience": {"changed": bool, "old": int or None, "new": int or None},
+                "grade": {"changed": bool, "old": str or None, "new": str or None},
+                "location": {"changed": bool, "old": str or None, "new": str or None},
+                ...
+            }
+        }
+    """
+    try:
+        # Get latest 2 versions
+        rows = db_conn.execute(
+            """SELECT version, metadata_json
+               FROM profile_history
+               WHERE profile_id = ?
+               ORDER BY version DESC
+               LIMIT 2""",
+            (profile_id,)
+        ).fetchall()
+
+        if not rows:
+            logger.warning("No profile history found", profile_id=profile_id)
+            return {
+                "current_version": None,
+                "previous_version": None,
+                "current": None,
+                "previous": None,
+                "diff": {}
+            }
+
+        current_data = json.loads(rows[0]["metadata_json"])
+        current_version = rows[0]["version"]
+
+        if len(rows) == 1:
+            # Only one version (first snapshot)
+            return {
+                "current_version": current_version,
+                "previous_version": None,
+                "current": current_data,
+                "previous": None,
+                "diff": {}
+            }
+
+        # Two versions available
+        previous_data = json.loads(rows[1]["metadata_json"])
+        previous_version = rows[1]["version"]
+
+        # Compute field-level diff
+        diff = _compute_profile_diff(previous_data, current_data)
+
+        return {
+            "current_version": current_version,
+            "previous_version": previous_version,
+            "current": current_data,
+            "previous": previous_data,
+            "diff": diff
+        }
+
+    except Exception as e:
+        logger.error("Failed to compute profile diff", profile_id=profile_id, error=str(e))
+        return {
+            "current_version": None,
+            "previous_version": None,
+            "current": None,
+            "previous": None,
+            "diff": {}
+        }
+
+
+def _compute_profile_diff(old: dict, new: dict) -> dict:
+    """Compute field-level diff between two profile metadata dicts.
+
+    Args:
+        old: Previous profile metadata
+        new: Current profile metadata
+
+    Returns:
+        Dictionary with diffs for each field
+    """
+    diff = {}
+
+    # Skills (list comparison, case-insensitive)
+    old_skills = set(s.lower() for s in (old.get("skills") or []))
+    new_skills = set(s.lower() for s in (new.get("skills") or []))
+    if old_skills != new_skills:
+        added = [s for s in new.get("skills", []) if s.lower() not in old_skills]
+        removed = [s for s in old.get("skills", []) if s.lower() not in new_skills]
+        unchanged = [s for s in new.get("skills", []) if s.lower() in old_skills]
+        diff["skills"] = {
+            "added": added,
+            "removed": removed,
+            "unchanged": unchanged
+        }
+
+    # Certifications (list comparison, case-insensitive)
+    old_certs = set(c.lower() for c in (old.get("certifications") or []))
+    new_certs = set(c.lower() for c in (new.get("certifications") or []))
+    if old_certs != new_certs:
+        added = [c for c in new.get("certifications", []) if c.lower() not in old_certs]
+        removed = [c for c in old.get("certifications", []) if c.lower() not in new_certs]
+        unchanged = [c for c in new.get("certifications", []) if c.lower() in old_certs]
+        diff["certifications"] = {
+            "added": added,
+            "removed": removed,
+            "unchanged": unchanged
+        }
+
+    # Text fields (simple string comparison)
+    for text_field in ["experience_summary", "education"]:
+        old_val = (old.get(text_field) or "").strip()
+        new_val = (new.get(text_field) or "").strip()
+        if old_val != new_val:
+            diff[text_field] = {
+                "changed": True,
+                "old": old_val,
+                "new": new_val
+            }
+
+    # Numeric and enum fields
+    for field in ["years_of_experience", "grade", "location"]:
+        old_val = old.get(field)
+        new_val = new.get(field)
+        if old_val != new_val:
+            diff[field] = {
+                "changed": True,
+                "old": old_val,
+                "new": new_val
+            }
+
+    return diff
