@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+
+{% block title %}Team Composition{% endblock %}
+
+{% block content %}
+<div class="container">
+  {% if mode == "form" %}
+    <h1>Team Composition Assistant</h1>
+    <p>Describe your project and required skills, and we'll suggest an optimal team from your available consultants.</p>
+
+    <form method="post" action="/team-builder">
+      <fieldset>
+        <label for="project-desc"><strong>Project Description</strong></label>
+        <textarea
+          id="project-desc"
+          name="project_description"
+          placeholder="E.g., Building a cloud migration platform for an enterprise customer. Need strong AWS expertise, DevOps practices, Python backend, React frontend, and experience managing large distributed teams."
+          rows="6"
+          required></textarea>
+
+        <label for="required-skills"><strong>Required Skills (comma-separated)</strong></label>
+        <input
+          type="text"
+          id="required-skills"
+          name="required_skills"
+          placeholder="E.g., Python, AWS, DevOps, React"
+          required />
+
+        <label for="team-size"><strong>Desired Team Size</strong></label>
+        <input
+          type="number"
+          id="team-size"
+          name="team_size"
+          value="3"
+          min="1"
+          max="20"
+          required />
+
+        <button type="submit">Get Team Suggestion</button>
+      </fieldset>
+    </form>
+
+    {% if total_profiles > 0 %}
+    <div class="skills-suggestions">
+      <p><strong>Available skills in your team:</strong></p>
+      <ul>
+        {% for skill in all_skills[:20] %}
+          <li>{{ skill }}</li>
+        {% endfor %}
+        {% if all_skills|length > 20 %}
+          <li>... and {{ all_skills|length - 20 }} more</li>
+        {% endif %}
+      </ul>
+    </div>
+    {% else %}
+    <div class="no-profiles-message">
+      <p>No profiles loaded yet. Please ingest CVs from the admin panel.</p>
+    </div>
+    {% endif %}
+
+  {% elif mode == "results" %}
+    <h1>Team Composition Suggestion</h1>
+
+    <div class="suggestion-context">
+      <h3>Project Summary</h3>
+      <p><strong>Description:</strong> {{ project_description }}</p>
+      <p><strong>Required Skills:</strong> {{ required_skills | join(', ') }}</p>
+      <p><strong>Suggested Team Size:</strong> {{ suggestion.team | length }} members</p>
+    </div>
+
+    {% if suggestion.team_summary %}
+    <div class="team-summary">
+      <h3>Team Overview</h3>
+      <p>{{ suggestion.team_summary }}</p>
+    </div>
+    {% endif %}
+
+    <div class="suggested-team">
+      <h3>Suggested Team Members</h3>
+      {% if suggestion.team %}
+        {% for member in suggestion.team %}
+          {% set fit_class = 'high-fit' if member.fit_score > 0.85 else 'medium-fit' if member.fit_score > 0.65 else 'low-fit' %}
+          <div class="team-member {{ fit_class }}">
+            <h4>{{ member.profile_name }} — {{ member.role }}</h4>
+            <p><strong>Fit Score:</strong> <span class="fit-score">{{ "%.0f" | format(member.fit_score * 100) }}%</span></p>
+            <p><strong>Reasoning:</strong> {{ member.reasoning }}</p>
+            {% if member.gaps %}
+              <p><strong>Gaps:</strong> {{ member.gaps }}</p>
+            {% endif %}
+            {% if member.profile_id %}
+              <a href="/profile/{{ member.profile_id }}" class="profile-link">View Full Profile</a>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% else %}
+        <p>No team members suggested. Please try different parameters.</p>
+      {% endif %}
+    </div>
+
+    <div class="actions">
+      <a href="/team-builder" class="btn btn-primary">← Refine Search</a>
+    </div>
+
+  {% elif mode == "error" %}
+    <h1>Team Composition Assistant</h1>
+    <div class="error-message">
+      <p>{{ error_message }}</p>
+    </div>
+    <a href="/team-builder" class="btn btn-primary">← Try Again</a>
+
+  {% endif %}
+</div>
+
+<style>
+  .container {
+    max-width: 1000px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+  }
+
+  h1 {
+    color: #333;
+    margin-bottom: 1rem;
+  }
+
+  h3 {
+    color: #555;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+  }
+
+  fieldset {
+    border: 1px solid #ddd;
+    padding: 2rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+  }
+
+  label {
+    display: block;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    color: #333;
+  }
+
+  textarea,
+  input[type="text"],
+  input[type="number"] {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 1rem;
+    box-sizing: border-box;
+  }
+
+  textarea:focus,
+  input[type="text"]:focus,
+  input[type="number"]:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+  }
+
+  button[type="submit"] {
+    background-color: #007bff;
+    color: white;
+    padding: 0.75rem 2rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    margin-top: 1rem;
+  }
+
+  button[type="submit"]:hover {
+    background-color: #0056b3;
+  }
+
+  .skills-suggestions {
+    background-color: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-top: 2rem;
+  }
+
+  .skills-suggestions ul {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.5rem;
+  }
+
+  .skills-suggestions li {
+    background-color: white;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+  }
+
+  .no-profiles-message {
+    background-color: #fff3cd;
+    padding: 1rem;
+    border: 1px solid #ffc107;
+    border-radius: 4px;
+    color: #856404;
+  }
+
+  .suggestion-context {
+    background-color: #e7f3ff;
+    padding: 1.5rem;
+    border-left: 4px solid #007bff;
+    margin-bottom: 2rem;
+    border-radius: 4px;
+  }
+
+  .suggestion-context p {
+    margin: 0.5rem 0;
+  }
+
+  .team-summary {
+    background-color: #f0f7ff;
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+  }
+
+  .team-summary p {
+    margin: 0;
+    line-height: 1.6;
+    color: #444;
+  }
+
+  .suggested-team {
+    margin-bottom: 2rem;
+  }
+
+  .team-member {
+    background-color: white;
+    border: 2px solid #ddd;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    border-radius: 8px;
+  }
+
+  .team-member.high-fit {
+    border-color: #28a745;
+    background-color: #f0fff4;
+  }
+
+  .team-member.medium-fit {
+    border-color: #ffc107;
+    background-color: #fffbf0;
+  }
+
+  .team-member.low-fit {
+    border-color: #dc3545;
+    background-color: #fff5f5;
+  }
+
+  .team-member h4 {
+    margin: 0 0 1rem 0;
+    color: #333;
+  }
+
+  .team-member p {
+    margin: 0.5rem 0;
+    color: #555;
+  }
+
+  .fit-score {
+    font-weight: bold;
+    font-size: 1.1rem;
+  }
+
+  .team-member.high-fit .fit-score {
+    color: #28a745;
+  }
+
+  .team-member.medium-fit .fit-score {
+    color: #ffc107;
+  }
+
+  .team-member.low-fit .fit-score {
+    color: #dc3545;
+  }
+
+  .profile-link {
+    display: inline-block;
+    margin-top: 1rem;
+    color: #007bff;
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border: 1px solid #007bff;
+    border-radius: 4px;
+  }
+
+  .profile-link:hover {
+    background-color: #007bff;
+    color: white;
+  }
+
+  .actions {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid #ddd;
+  }
+
+  .btn {
+    display: inline-block;
+    padding: 0.75rem 1.5rem;
+    margin-right: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    text-decoration: none;
+    color: #333;
+    background-color: #f8f9fa;
+    cursor: pointer;
+  }
+
+  .btn:hover {
+    background-color: #e9ecef;
+  }
+
+  .btn.btn-primary {
+    background-color: #007bff;
+    color: white;
+    border-color: #007bff;
+  }
+
+  .btn.btn-primary:hover {
+    background-color: #0056b3;
+    border-color: #0056b3;
+  }
+
+  .error-message {
+    background-color: #fff5f5;
+    color: #c53030;
+    border: 1px solid #fc8181;
+    padding: 1rem;
+    border-radius: 4px;
+    margin-bottom: 2rem;
+  }
+
+  .error-message p {
+    margin: 0;
+  }
+</style>
+{% endblock %}
