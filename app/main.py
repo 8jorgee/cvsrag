@@ -278,11 +278,24 @@ async def do_search(
         page=int(page) if page else 1,
     )
 
+    # Session tracking: get or create session
+    session_id = request.cookies.get("session_id")
+    collection = get_collection()
+    session_id = engine.get_or_create_session(collection._conn, session_id)
+
     # Call search with pagination parameters
     page_num = max(1, int(page) if page else 1)
     result = engine.search(search_query, page=page_num, page_size=10)
 
-    return templates.TemplateResponse(
+    # Log the search query
+    engine.log_search_query(
+        collection._conn,
+        session_id,
+        search_query,
+        len(result["results"])
+    )
+
+    response = templates.TemplateResponse(
         "partials/results.html",
         {
             "request": request,
@@ -295,6 +308,19 @@ async def do_search(
             "availability_color": _availability_color,
         },
     )
+
+    # Set session cookie (30-day expiry)
+    response.set_cookie(
+        "session_id",
+        session_id,
+        max_age=2592000,  # 30 days in seconds
+        path="/",
+        httponly=True,
+        secure=True,
+        samesite="Lax"
+    )
+
+    return response
 
 
 @app.get("/profile/{profile_id}", response_class=HTMLResponse)
