@@ -458,6 +458,57 @@ async def export_results(
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
 
+@app.get("/gap-analysis", response_class=HTMLResponse)
+async def gap_analysis_form(request: Request):
+    collection = get_collection()
+    total = collection.count()
+    all_skills = engine.get_all_skills() if total > 0 else []
+
+    return templates.TemplateResponse(
+        "gap_analysis.html",
+        {
+            "request": request,
+            "mode": "form",
+            "total_profiles": total,
+            "all_skills": all_skills,
+        },
+    )
+
+
+@app.post("/gap-analysis", response_class=HTMLResponse)
+async def gap_analysis_submit(
+    request: Request,
+    skills_input: str = Form(""),
+):
+    # Parse comma-separated or newline-separated skills
+    raw_skills = [s.strip() for s in skills_input.replace(',', '\n').split('\n') if s.strip()]
+
+    if not raw_skills:
+        return templates.TemplateResponse(
+            "gap_analysis.html",
+            {
+                "request": request,
+                "mode": "error",
+                "error_message": "Please enter at least one skill",
+                "total_profiles": get_collection().count(),
+                "all_skills": engine.get_all_skills(),
+            },
+        )
+
+    coverage = engine.calculate_skill_coverage(raw_skills)
+
+    return templates.TemplateResponse(
+        "gap_analysis.html",
+        {
+            "request": request,
+            "mode": "results",
+            "skills_input": raw_skills,
+            "coverage_data": coverage,
+            "total_profiles": coverage.get("total_profiles", 0),
+        },
+    )
+
+
 @app.get("/profile/{profile_id}", response_class=HTMLResponse)
 async def profile_detail(request: Request, profile_id: str):
     profile = engine.get_profile_by_id(profile_id)
