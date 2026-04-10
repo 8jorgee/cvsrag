@@ -138,6 +138,24 @@
       <button class="btn-search" onclick="triggerSearch()">Search</button>
     </div>
 
+    <!-- Search history dropdown -->
+    {% if search_history %}
+    <div class="search-history">
+      <label for="history-dropdown">Recent Searches ({{ search_history|length }})</label>
+      <select id="history-dropdown" name="history" onchange="replaySearch(this.value)">
+        <option value="">-- Select a recent search --</option>
+        {% for history_item in search_history %}
+          <option value="{{ history_item.id }}"
+                  data-query="{{ history_item.query_text }}"
+                  data-mode="{{ history_item.mode }}"
+                  data-filters="{{ history_item | tojson | e }}">
+            {{ history_item.query_text[:40] }}{% if history_item.query_text|length > 40 %}...{% endif %} ({{ history_item.results_count }} results, {{ history_item.created_at[:10] }})
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
     <p class="search-hint">
       {{ total_profiles }} profiles indexed &nbsp;·&nbsp;
       Try: "data engineer with Databricks available 50%", "Python ML specialist in Madrid"
@@ -231,6 +249,95 @@
     document.getElementById('certifications-mode').textContent = 'AND';
     updateFilterFieldNames('skills', false);
     updateFilterFieldNames('certifications', false);
+  }
+
+  // Replay search from history
+  function replaySearch(historyId) {
+    if (!historyId) return;
+
+    const dropdown = document.getElementById('history-dropdown');
+    const selectedOption = dropdown.options[dropdown.selectedIndex];
+    const query = selectedOption.dataset.query;
+    const mode = selectedOption.dataset.mode;
+    const filtersStr = selectedOption.dataset.filters;
+
+    // Populate main search bar
+    document.getElementById('main-search').value = query;
+    document.getElementById('hidden-query').value = query;
+
+    // Set mode
+    document.querySelector(`input[name="mode"][value="${mode}"]`).checked = true;
+
+    // Parse and apply filters
+    try {
+      const filters = JSON.parse(filtersStr);
+      // Clear existing selections
+      clearFilters();
+
+      // Set mode
+      document.querySelector(`input[name="mode"][value="${mode}"]`).checked = true;
+
+      // Apply filters based on filter type
+      if (filters.skills && filters.skills.length > 0) {
+        filters.skills.forEach(skill => {
+          const input = document.querySelector(`input[name="skills"][value="${skill}"]`);
+          if (input) input.checked = true;
+        });
+      }
+
+      if (filters.certifications && filters.certifications.length > 0) {
+        filters.certifications.forEach(cert => {
+          const input = document.querySelector(`input[name="certifications"][value="${cert}"]`);
+          if (input) input.checked = true;
+        });
+      }
+
+      if (filters.skills_any && filters.skills_any.length > 0) {
+        filters.skills_any.forEach(skill => {
+          const input = document.querySelector(`input[name="skills"][value="${skill}"]`);
+          if (input) input.checked = true;
+        });
+        filterModes.skills = 'OR';
+        document.getElementById('skills-mode').textContent = 'OR';
+        updateFilterFieldNames('skills', true);
+      }
+
+      if (filters.certifications_any && filters.certifications_any.length > 0) {
+        filters.certifications_any.forEach(cert => {
+          const input = document.querySelector(`input[name="certifications"][value="${cert}"]`);
+          if (input) input.checked = true;
+        });
+        filterModes.certifications = 'OR';
+        document.getElementById('certifications-mode').textContent = 'OR';
+        updateFilterFieldNames('certifications', true);
+      }
+
+      if (filters.availability_status) {
+        document.querySelector(`select[name="availability_status"]`).value = filters.availability_status;
+      }
+
+      if (filters.availability_percentage_min) {
+        document.querySelector(`input[name="availability_percentage_min"]`).value = filters.availability_percentage_min;
+        document.getElementById('avail-pct-label').textContent = filters.availability_percentage_min;
+      }
+
+      if (filters.grade) {
+        document.querySelector(`select[name="grade"]`).value = filters.grade;
+      }
+
+      if (filters.location) {
+        document.querySelector(`select[name="location"]`).value = filters.location;
+      }
+
+    } catch (e) {
+      console.error("Failed to parse filters:", e);
+    }
+
+    // Trigger search
+    htmx.trigger('#search-form', 'submit');
+
+    // Reset dropdown
+    dropdown.selectedIndex = 0;
   }
 </script>
 {% endblock %}
