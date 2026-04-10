@@ -18,6 +18,7 @@ from pathlib import Path
 import asyncio
 import hashlib
 from threading import Lock as ThreadingLock
+from datetime import datetime
 
 import faiss
 import numpy as np
@@ -87,6 +88,24 @@ class VectorCollection:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_search_queries_session_id ON search_queries(session_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_search_queries_created_at ON search_queries(created_at)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS profile_history (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_id      TEXT NOT NULL,
+                version         INTEGER NOT NULL,
+                metadata_json   TEXT NOT NULL,
+                created_at      TEXT NOT NULL,
+                source_file     TEXT,
+                FOREIGN KEY (profile_id) REFERENCES profiles(id),
+                UNIQUE (profile_id, version)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_profile_history_profile_version ON profile_history(profile_id, version DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_profile_history_created_at ON profile_history(created_at)")
+
+        # One-time migration: populate initial history for existing profiles
+        self._migrate_existing_profiles_to_history(conn)
+
         conn.commit()
         return conn
 
@@ -105,6 +124,46 @@ class VectorCollection:
                 logger.warning("Could not load FAISS index, rebuilding", error=str(e))
 
         return self._rebuild_index()
+
+    def _migrate_existing_profiles_to_history(self, conn: sqlite3.Connection) -> None:
+        """One-time migration: populate profile_history with initial snapshots for existing profiles.
+
+        This runs on first _open_db() call. If profile_history is empty but profiles exist,
+        we create version=1 snapshots for all existing profiles.
+        """
+        try:
+            # Check if profile_history is empty
+            history_count = conn.execute(
+                "SELECT COUNT(*) FROM profile_history"
+            ).fetchone()[0]
+
+            if history_count == 0:
+                # Get all existing profiles
+                profiles = conn.execute(
+                    "SELECT id, metadata, source_file FROM profiles"
+                ).fetchall()
+
+                if profiles:
+                    now = datetime.now().isoformat()
+                    logger.info("Migrating existing profiles to history", profile_count=len(profiles))
+
+                    for profile_row in profiles:
+                        profile_id = profile_row["id"]
+                        metadata_json = profile_row["metadata"]
+                        source_file = profile_row["source_file"] or ""
+
+                        # Insert version 1 for this profile
+                        conn.execute(
+                            """INSERT INTO profile_history
+                               (profile_id, version, metadata_json, created_at, source_file)
+                               VALUES (?, ?, ?, ?, ?)""",
+                            (profile_id, 1, metadata_json, now, source_file)
+                        )
+                    conn.commit()
+                    logger.info("Profile history migration completed", profile_count=len(profiles))
+        except Exception as e:
+            logger.error("Profile history migration failed", error=str(e))
+            # Don't raise — allow DB to continue even if migration fails
 
     def _rebuild_index(self) -> faiss.IndexFlatIP:
         """Reconstruct the FAISS index from all embeddings stored in SQLite."""
