@@ -574,3 +574,132 @@ def get_search_history(db_conn: sqlite3.Connection, session_id: str) -> list[dic
         }
         for row in rows
     ]
+
+
+def suggest_team_composition(
+    project_description: str,
+    required_skills: list[str],
+    team_size: int,
+) -> dict:
+    """
+    Use Claude to suggest an optimal team from available profiles.
+
+    Args:
+        project_description: Description of the project and requirements
+        required_skills: List of required skill names
+        team_size: Desired number of team members (e.g., 3-5)
+
+    Returns:
+        dict with keys:
+        - team: list[dict] with profile_id, profile_name, role, reasoning, gaps, fit_score
+        - team_summary: str (Claude's overall team assessment)
+        - error: str (if Claude call failed)
+    """
+    collection = get_collection()
+
+    # Check if we have profiles
+    total_profiles = collection.count()
+    if total_profiles == 0:
+        return {"error": "No profiles available"}
+
+    # Clamp team size to valid range
+    team_size = max(1, min(team_size, total_profiles))
+
+    # Fetch all profiles
+    all_docs = collection.get(include=["metadatas", "documents"])
+    if not all_docs["ids"]:
+        return {"error": "Failed to fetch profiles"}
+
+    # Build profiles text for Claude
+    profiles_text = []
+    id_to_profile = {}  # Map profile IDs to metadata for later lookup
+
+    for i, doc_id in enumerate(all_docs["ids"]):
+        metadata = all_docs["metadatas"][i]
+        name = metadata.get("name", "Unknown")
+        skills = json.loads(metadata.get("skills", "[]"))
+        certifications = json.loads(metadata.get("certifications", "[]"))
+        experience_summary = metadata.get("experience_summary", "")
+        grade = metadata.get("grade", "Unknown")
+        availability = metadata.get("availability_percentage", 0) or 0
+
+        id_to_profile[doc_id] = {
+            "name": name,
+            "skills": skills,
+            "certifications": certifications,
+            "experience_summary": experience_summary,
+            "grade": grade,
+            "availability": availability,
+        }
+
+        profiles_text.append(
+            f"ID: {doc_id}\n"
+            f"Name: {name}\n"
+            f"Grade: {grade}\n"
+            f"Skills: {', '.join(skills[:20])}\n"
+            f"Certifications: {', '.join(certifications[:10])}\n"
+            f"Experience: {experience_summary[:300]}\n"
+            f"Availability: {availability}%\n"
+        )
+
+    profiles_full = "\n---\n".join(profiles_text)
+
+    # Build Claude prompt
+    system_prompt = (
+        "You are an expert talent matcher for consulting projects. "
+        "Suggest the best team from available profiles based on project needs and skill requirements. "
+        "Return ONLY valid JSON with team member suggestions and reasoning. "
+        "Focus on experience depth, complementary skills, and project fit."
+    )
+
+    user_prompt = (
+        f"Project Description:\n{project_description}\n\n"
+        f"Required Skills: {', '.join(required_skills)}\n\n"
+        f"Desired Team Size: {team_size}\n\n"
+        f"Available Profiles:\n{profiles_full}\n\n"
+        f"Return JSON (no markdown, no other text) with this exact structure:\n"
+        f'{{\n'
+        f'  "team": [\n'
+        f'    {{\n'
+        f'      "profile_id": "uuid-string",\n'
+        f'      "profile_name": "Full Name",\n'
+        f'      "role": "Suggested Role",\n'
+        f'      "reasoning": "Why this person fits",\n'
+        f'      "gaps": "Skill gaps or limitations",\n'
+        f'      "fit_score": 0.85\n'
+        f'    }}\n'
+        f'  ],\n'
+        f'  "team_summary": "Overall assessment of the team composition"\n'
+        f'}}'
+    )
+
+    try:
+        response = _call_llm(system=system_prompt, user=user_prompt)
+        suggestion = parse_json_response(response, context="Team composition suggestion")
+
+        # Validate response structure
+        if not isinstance(suggestion, dict):
+            return {"error": "Invalid response format from Claude"}
+
+        team = suggestion.get("team", [])
+        team_summary = suggestion.get("team_summary", "")
+
+        # Validate and normalize team member scores
+        for member in team:
+            if "fit_score" in member and isinstance(member["fit_score"], (int, float)):
+                member["fit_score"] = _clamp01(float(member["fit_score"]))
+            else:
+                member["fit_score"] = 0.5
+
+        return {
+            "team": team,
+            "team_summary": team_summary,
+            "error": None,
+        }
+
+    except (ValueError, json.JSONDecodeError) as e:
+        logger.error("Team composition JSON parsing failed", error=str(e))
+        return {"error": f"Claude response parsing failed: {str(e)}"}
+    except Exception as e:
+        logger.error("Team composition suggestion failed", error=str(e))
+        return {"error": f"Team composition failed: {str(e)}"}
