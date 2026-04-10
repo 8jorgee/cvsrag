@@ -286,6 +286,7 @@ def _call_llm(system: str, user: str) -> str:
                 {"role": "user", "content": user},
             ],
             max_tokens=2048,
+            response_format={"type": "json_object"},
         )
         return response.choices[0].message.content
     elif settings.llm_backend == "ollama":

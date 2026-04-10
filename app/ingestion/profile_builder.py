@@ -115,7 +115,8 @@ def parse_profile_with_claude(
             response = client.chat.completions.create(
                 model=settings.llm_model,
                 messages=messages,
-                max_tokens=1024,
+                max_tokens=2048,
+                response_format={"type": "json_object"},
             )
             content = response.choices[0].message.content.strip()
         elif settings.llm_backend == "ollama":
