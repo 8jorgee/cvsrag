@@ -88,6 +88,22 @@
     </div>
     {% endif %}
 
+    <!-- Profile Version History -->
+    {% if all_profiles %}
+    <div class="admin-card">
+      <h2>Profile Version History</h2>
+      <p>Track changes to profile metadata across re-indexing.</p>
+      <ul class="profile-list">
+        {% for profile in all_profiles %}
+        <li>
+          <a href="/admin/profile/{{ profile.id }}/diff">{{ profile.name }}</a>
+          {% if profile.grade %}<span style="color: #666; margin-left: 10px;">({{ profile.grade }})</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
   </div>
 </div>
 

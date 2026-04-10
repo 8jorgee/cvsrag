@@ -641,12 +641,20 @@ async def admin_page(request: Request, _: None = Depends(_require_admin_auth)):
 
     missing_avail = []
     stale = []
+    all_profiles = []
     last_ingestion = None
     six_months_ago = datetime.now() - timedelta(days=180)
 
     if total > 0:
-        all_docs = collection.get(include=["metadatas"])
-        for meta in all_docs["metadatas"]:
+        all_docs = collection.get(include=["metadatas", "documents"])
+        for i, doc_id in enumerate(all_docs["ids"]):
+            meta = all_docs["metadatas"][i]
+            document = all_docs["documents"][i]
+
+            # Convert metadata to Profile object
+            profile = engine._metadata_to_profile(doc_id, meta, document)
+            all_profiles.append(profile)
+
             if not meta.get("availability_date") and not meta.get("availability_percentage"):
                 missing_avail.append(meta.get("name", "Unknown"))
 
@@ -669,6 +677,7 @@ async def admin_page(request: Request, _: None = Depends(_require_admin_auth)):
             "last_ingestion": last_ingestion.strftime("%Y-%m-%d %H:%M") if last_ingestion else "Never",
             "missing_availability": missing_avail,
             "stale_profiles": stale,
+            "all_profiles": all_profiles,
         },
     )
 
