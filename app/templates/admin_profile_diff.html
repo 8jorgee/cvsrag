@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Profile Version History{% endblock %}
+
+{% block content %}
+<div class="admin-section">
+  <h1>Profile Version History: {{ profile.name }}</h1>
+
+  {% if diff_data.previous_version %}
+    <div class="diff-container">
+      <h2>Changes from v{{ diff_data.previous_version }} to v{{ diff_data.current_version }}</h2>
+
+      <!-- Skills Diff -->
+      {% if diff_data.diff.skills %}
+        <section class="diff-section">
+          <h3>Skills</h3>
+          {% if diff_data.diff.skills.added %}
+            <div class="diff-added">
+              <strong>Added:</strong>
+              <ul>
+                {% for skill in diff_data.diff.skills.added %}
+                  <li style="color: green;">+ {{ skill }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+
+          {% if diff_data.diff.skills.removed %}
+            <div class="diff-removed">
+              <strong>Removed:</strong>
+              <ul>
+                {% for skill in diff_data.diff.skills.removed %}
+                  <li style="color: red;">- {{ skill }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+
+          {% if diff_data.diff.skills.unchanged %}
+            <div class="diff-unchanged">
+              <strong>Unchanged ({{ diff_data.diff.skills.unchanged|length }}):</strong>
+              <p>{{ diff_data.diff.skills.unchanged[:5] | join(', ') }}{% if diff_data.diff.skills.unchanged|length > 5 %}, ...{% endif %}</p>
+            </div>
+          {% endif %}
+        </section>
+      {% endif %}
+
+      <!-- Certifications Diff -->
+      {% if diff_data.diff.certifications %}
+        <section class="diff-section">
+          <h3>Certifications</h3>
+          {% if diff_data.diff.certifications.added %}
+            <div class="diff-added">
+              <strong>Added:</strong>
+              <ul>
+                {% for cert in diff_data.diff.certifications.added %}
+                  <li style="color: green;">+ {{ cert }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+
+          {% if diff_data.diff.certifications.removed %}
+            <div class="diff-removed">
+              <strong>Removed:</strong>
+              <ul>
+                {% for cert in diff_data.diff.certifications.removed %}
+                  <li style="color: red;">- {{ cert }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+        </section>
+      {% endif %}
+
+      <!-- Text Fields Diff (experience, education) -->
+      {% if diff_data.diff.experience_summary and diff_data.diff.experience_summary.changed %}
+        <section class="diff-section">
+          <h3>Experience Summary</h3>
+          <p><strong>Updated:</strong> Yes</p>
+          <div style="display: flex; gap: 20px;">
+            <div style="flex: 1;">
+              <h4>Previous</h4>
+              <p style="color: #888;">{{ diff_data.diff.experience_summary.old[:200] }}...</p>
+            </div>
+            <div style="flex: 1;">
+              <h4>Current</h4>
+              <p>{{ diff_data.diff.experience_summary.new[:200] }}...</p>
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if diff_data.diff.education and diff_data.diff.education.changed %}
+        <section class="diff-section">
+          <h3>Education</h3>
+          <p><strong>Updated:</strong> Yes</p>
+          <div style="display: flex; gap: 20px;">
+            <div style="flex: 1;">
+              <h4>Previous</h4>
+              <p style="color: #888;">{{ diff_data.diff.education.old[:200] }}...</p>
+            </div>
+            <div style="flex: 1;">
+              <h4>Current</h4>
+              <p>{{ diff_data.diff.education.new[:200] }}...</p>
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
+      <!-- Numeric/Enum Fields -->
+      {% if diff_data.diff.years_of_experience and diff_data.diff.years_of_experience.changed %}
+        <section class="diff-section">
+          <h3>Years of Experience</h3>
+          <p>
+            <strong>Previous:</strong> <code>{{ diff_data.diff.years_of_experience.old or 'N/A' }}</code>
+            <strong>→ Current:</strong> <code>{{ diff_data.diff.years_of_experience.new or 'N/A' }}</code>
+          </p>
+        </section>
+      {% endif %}
+
+      {% if diff_data.diff.grade and diff_data.diff.grade.changed %}
+        <section class="diff-section">
+          <h3>Grade</h3>
+          <p>
+            <strong>Previous:</strong> <code>{{ diff_data.diff.grade.old or 'N/A' }}</code>
+            <strong>→ Current:</strong> <code>{{ diff_data.diff.grade.new or 'N/A' }}</code>
+          </p>
+        </section>
+      {% endif %}
+
+      {% if diff_data.diff.location and diff_data.diff.location.changed %}
+        <section class="diff-section">
+          <h3>Location</h3>
+          <p>
+            <strong>Previous:</strong> <code>{{ diff_data.diff.location.old or 'N/A' }}</code>
+            <strong>→ Current:</strong> <code>{{ diff_data.diff.location.new or 'N/A' }}</code>
+          </p>
+        </section>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="info-box" style="padding: 20px; border: 1px solid #e0e0e0; background: #f9f9f9; margin: 20px 0;">
+      <p><strong>This is the first version of this profile.</strong> No previous version available to diff against.</p>
+    </div>
+  {% endif %}
+
+  <div class="actions" style="margin-top: 30px;">
+    <a href="/admin" class="btn" style="padding: 10px 20px; margin-right: 10px;">← Back to Admin</a>
+    <a href="/profile/{{ profile.id }}" class="btn" style="padding: 10px 20px;">View Current Profile</a>
+  </div>
+</div>
+{% endblock %}
