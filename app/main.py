@@ -106,8 +106,10 @@ admin_security = HTTPBasic(auto_error=False)
 async def validate_startup():
     """Validate required environment variables at startup."""
     try:
-        if not settings.anthropic_api_key:
+        if settings.llm_backend == "anthropic" and not settings.anthropic_api_key:
             raise ValueError("ANTHROPIC_API_KEY is not set")
+        if settings.llm_backend == "groq" and not settings.groq_api_key:
+            raise ValueError("GROQ_API_KEY is not set")
         logger.info("API key validated", status="valid")
     except Exception as e:
         logger.error("Startup validation failed", error=str(e))

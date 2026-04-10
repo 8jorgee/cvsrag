@@ -2,6 +2,8 @@ import json
 import re
 
 import anthropic
+import groq
+import ollama
 import structlog
 
 from app.config import settings
@@ -94,8 +96,6 @@ def parse_profile_with_claude(
         slides_content: List of slide text strings for boundary-respecting chunking
         name_hint: Name hint from filename
     """
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
     # Slide-boundary chunking: concatenate slides until 16,000 chars
     truncated_text = chunk_slides_to_16k(slides_content)
 
@@ -103,20 +103,36 @@ def parse_profile_with_claude(
         # Fallback: use raw_text if no slides
         truncated_text = raw_text[:16_000]
 
-    try:
-        response = client.messages.create(
-            model=settings.llm_model,
-            max_tokens=1024,
-            system=_SYSTEM_PROMPT,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Name hint (from filename): {name_hint}\n\nCV Text:\n{truncated_text}",
-                }
-            ],
-        )
+    user_msg = f"Name hint (from filename): {name_hint}\n\nCV Text:\n{truncated_text}"
+    messages = [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "user", "content": user_msg},
+    ]
 
-        content = response.content[0].text.strip()
+    try:
+        if settings.llm_backend == "groq":
+            client = groq.Groq(api_key=settings.groq_api_key)
+            response = client.chat.completions.create(
+                model=settings.llm_model,
+                messages=messages,
+                max_tokens=1024,
+            )
+            content = response.choices[0].message.content.strip()
+        elif settings.llm_backend == "ollama":
+            response = ollama.Client(host=settings.ollama_base_url).chat(
+                model=settings.llm_model,
+                messages=messages,
+            )
+            content = response.message.content.strip()
+        else:
+            client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+            response = client.messages.create(
+                model=settings.llm_model,
+                max_tokens=1024,
+                system=_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_msg}],
+            )
+            content = response.content[0].text.strip()
         return parse_json_response(content, context=f"Profile parsing for {name_hint}")
 
     except ValueError as e:

@@ -2,6 +2,8 @@ import json
 import re
 
 import anthropic
+import groq
+import ollama
 import structlog
 
 from app.config import settings
@@ -270,6 +272,39 @@ def search(query: SearchQuery, page: int = 1, page_size: int = 10) -> dict:
     }
 
 
+def _call_llm(system: str, user: str) -> str:
+    """Call the configured LLM backend and return the response text."""
+    if settings.llm_backend == "groq":
+        client = groq.Groq(api_key=settings.groq_api_key)
+        response = client.chat.completions.create(
+            model=settings.llm_model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=2048,
+        )
+        return response.choices[0].message.content
+    elif settings.llm_backend == "ollama":
+        response = ollama.Client(host=settings.ollama_base_url).chat(
+            model=settings.llm_model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        return response.message.content
+    else:
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        response = client.messages.create(
+            model=settings.llm_model,
+            max_tokens=2048,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+        return response.content[0].text
+
+
 _RERANK_SYSTEM = (
     "You are a talent matching expert for a consulting firm. "
     "Rank candidate profiles by relevance to the search query.\n\n"
@@ -292,8 +327,6 @@ _RERANK_SYSTEM = (
 
 
 def _claude_rerank(query: str, candidates: list[dict]) -> list[SearchResult]:
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
     profiles_text = []
     for i, c in enumerate(candidates):
         p = c["profile"]
@@ -311,24 +344,15 @@ def _claude_rerank(query: str, candidates: list[dict]) -> list[SearchResult]:
         )
 
     try:
-        response = client.messages.create(
-            model=settings.llm_model,
-            max_tokens=2048,
+        content = _call_llm(
             system=_RERANK_SYSTEM,
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        f'Search query: "{query}"\n\n'
-                        f"Candidates:\n{''.join(profiles_text)}\n"
-                        "Rank all candidates and explain matches."
-                    ),
-                }
-            ],
+            user=(
+                f'Search query: "{query}"\n\n'
+                f"Candidates:\n{''.join(profiles_text)}\n"
+                "Rank all candidates and explain matches."
+            ),
         )
-
-        content = response.content[0].text
-        rankings = parse_json_response(content, context="Claude reranking response")
+        rankings = parse_json_response(content, context="LLM reranking response")
 
         results = []
         used_indices: set[int] = set()
