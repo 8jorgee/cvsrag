@@ -83,6 +83,6 @@ Plans:
 | # | Phase | Goal | Requirements | Status |
 |---|-------|------|--------------|--------|
 | 1 | Security & Data Integrity | Eliminate security vulnerabilities and data integrity bugs | SEC-01–05, DATA-01–05 | COMPLETE ✓ (Plan 01 & 02) |
-| 2 | Robustness, Performance & Core Features | Harden system, improve performance, ship first features | ROB-01–05, SEARCH-01–02, FEAT-01,02,07,10 | Pending |
-| 3 | Advanced Features | Export, search history, gap analysis, team builder, diff, SSE | FEAT-03–06, FEAT-08, FEAT-11 | Pending |
+| 2 | Robustness, Performance & Core Features | Harden system, improve performance, ship first features | ROB-01–05, SEARCH-01–02, FEAT-01,02,07,10 | COMPLETE ✓ (Plan 01–10) |
+| 3 | Advanced Features | Export, search history, gap analysis, team builder, diff, SSE | FEAT-03–06, FEAT-08, FEAT-11 | COMPLETE ✓ (Plan 01–03) |
 | 4 | Test Suite | 80%+ coverage with pytest | FEAT-09 | Pending |
