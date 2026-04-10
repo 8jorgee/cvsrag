@@ -66,6 +66,27 @@ class VectorCollection:
                 created_at TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS search_sessions (
+                id             TEXT PRIMARY KEY,
+                created_at     TEXT NOT NULL,
+                last_accessed  TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS search_queries (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id      TEXT NOT NULL,
+                query_text      TEXT NOT NULL,
+                mode            TEXT NOT NULL,
+                filters_json    TEXT,
+                created_at      TEXT NOT NULL,
+                results_count   INTEGER,
+                FOREIGN KEY(session_id) REFERENCES search_sessions(id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_search_queries_session_id ON search_queries(session_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_search_queries_created_at ON search_queries(created_at)")
         conn.commit()
         return conn
 
