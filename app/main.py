@@ -782,3 +782,27 @@ async def upload_availability(file: UploadFile = File(...), _: None = Depends(_r
 
     logger.info("Availability data uploaded", filename=safe_name)
     return JSONResponse({"status": "ok", "filename": safe_name})
+
+
+@app.get("/admin/profile/{profile_id}/diff", response_class=HTMLResponse)
+async def admin_profile_diff(
+    request: Request,
+    profile_id: str,
+    _: None = Depends(_require_admin_auth),
+):
+    """Show version diff for a profile."""
+    profile = engine.get_profile_by_id(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    collection = get_collection()
+    diff_data = engine.get_profile_diff(collection._conn, profile_id)
+
+    return templates.TemplateResponse(
+        "admin_profile_diff.html",
+        {
+            "request": request,
+            "profile": profile,
+            "diff_data": diff_data,
+        },
+    )
