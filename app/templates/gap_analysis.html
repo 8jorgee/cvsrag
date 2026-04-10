@@ -1,0 +1,402 @@
+{% extends "base.html" %}
+{% block title %}Skill Gap Analysis{% endblock %}
+
+{% block content %}
+<div class="gap-analysis-container">
+
+  <!-- Form Section (when mode == "form") -->
+  {% if mode == "form" %}
+  <div class="gap-analysis-form">
+    <h1>Skill Gap Analysis</h1>
+    <p>Enter the skills your project requires, and we'll show you which team members cover each skill.</p>
+
+    <form method="post" action="/gap-analysis">
+      <div class="form-group">
+        <label for="skills_input">Required Skills:</label>
+        <textarea
+          id="skills_input"
+          name="skills_input"
+          placeholder="Enter skills (comma-separated or one per line):&#10;e.g., Python, Azure, DevOps, Kubernetes"
+          rows="6"
+          cols="50"></textarea>
+      </div>
+      <button type="submit" class="btn-primary">Analyze Coverage</button>
+    </form>
+
+    {% if total_profiles > 0 %}
+    <div class="skills-suggestions">
+      <h3>Available skills in your team:</h3>
+      <ul class="skills-list">
+        {% for skill in all_skills[:20] %}
+          <li>{{ skill }}</li>
+        {% endfor %}
+        {% if all_skills|length > 20 %}
+          <li><em>... and {{ all_skills|length - 20 }} more</em></li>
+        {% endif %}
+      </ul>
+    </div>
+    {% else %}
+    <div class="info-box">
+      <p>No profiles available yet. Upload CVs in the Admin section to start the analysis.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Results Section (when mode == "results") -->
+  {% elif mode == "results" %}
+  <div class="gap-analysis-results">
+    <h1>Skill Gap Analysis Results</h1>
+
+    <div class="analysis-summary">
+      <h2>Coverage Summary</h2>
+      <p class="overall-coverage">
+        <strong>Overall Coverage: {{ "%.1f" | format(coverage_data.overall_coverage) }}%</strong>
+      </p>
+      <ul class="coverage-list">
+        {% for skill in skills_input %}
+          {% set skill_lower = skill.lower() %}
+          {% set skill_data = coverage_data.skill_coverage.get(skill_lower, {}) %}
+          <li>
+            <span class="skill-name">{{ skill }}</span>:
+            <span class="coverage-percentage">{{ "%.1f" | format(skill_data.get("percentage", 0)) }}%</span>
+            ({{ skill_data.get("count", 0) }}/{{ total_profiles }} profiles)
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <table class="coverage-matrix">
+      <thead>
+        <tr>
+          <th>Skill</th>
+          <th>Coverage %</th>
+          <th>Covered By</th>
+          <th>Gaps</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for skill in skills_input %}
+          {% set skill_lower = skill.lower() %}
+          {% set skill_data = coverage_data.skill_coverage.get(skill_lower, {}) %}
+          {% set coverage_pct = skill_data.get("percentage", 0) %}
+          {% if coverage_pct == 100 %}
+            {% set row_class = "covered" %}
+          {% elif coverage_pct >= 50 %}
+            {% set row_class = "partial" %}
+          {% else %}
+            {% set row_class = "gap" %}
+          {% endif %}
+          <tr class="{{ row_class }}">
+            <td class="skill-name">{{ skill }}</td>
+            <td class="coverage-percent">{{ "%.1f" | format(coverage_pct) }}%</td>
+            <td class="profiles-covered">
+              {% if skill_data.get("count", 0) > 0 %}
+                <span class="covered-icon">✓</span> {{ skill_data.get("count", 0) }} profile{{ "s" if skill_data.get("count", 1) > 1 else "" }}
+              {% else %}
+                <span class="gap-icon" style="color: red;">✗</span> <span style="color: red;">No one</span>
+              {% endif %}
+            </td>
+            <td class="gaps-count">
+              {% if skill_data.get("gaps", 0) > 0 %}
+                <span style="color: red;">{{ skill_data.get("gaps", 0) }}</span>
+              {% else %}
+                <span class="covered-icon">✓</span> None
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="results-actions">
+      <a href="/gap-analysis" class="btn-secondary">← New Analysis</a>
+    </div>
+  </div>
+
+  <!-- Error Section (when mode == "error") -->
+  {% elif mode == "error" %}
+  <div class="gap-analysis-error">
+    <h1>Skill Gap Analysis</h1>
+    <div class="error-message">
+      <p>{{ error_message }}</p>
+    </div>
+    <div class="error-actions">
+      <a href="/gap-analysis" class="btn-secondary">← Try Again</a>
+    </div>
+  </div>
+
+  {% endif %}
+
+</div>
+
+<style>
+  .gap-analysis-container {
+    max-width: 1000px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background: #f9f9f9;
+    border-radius: 8px;
+  }
+
+  .gap-analysis-form, .gap-analysis-results, .gap-analysis-error {
+    padding: 1.5rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  h1 {
+    color: #333;
+    margin-bottom: 1rem;
+  }
+
+  h2 {
+    color: #555;
+    font-size: 1.2rem;
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  h3 {
+    color: #666;
+    font-size: 1rem;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  p {
+    color: #666;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+  }
+
+  .form-group {
+    margin-bottom: 1.5rem;
+  }
+
+  label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    color: #333;
+  }
+
+  textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.95rem;
+    resize: vertical;
+    box-sizing: border-box;
+  }
+
+  textarea:focus {
+    outline: none;
+    border-color: #4CAF50;
+    box-shadow: 0 0 4px rgba(76, 175, 80, 0.3);
+  }
+
+  .btn-primary {
+    background-color: #4CAF50;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: bold;
+    transition: background-color 0.3s;
+  }
+
+  .btn-primary:hover {
+    background-color: #45a049;
+  }
+
+  .btn-secondary {
+    background-color: #2196F3;
+    color: white;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    text-decoration: none;
+    display: inline-block;
+    transition: background-color 0.3s;
+  }
+
+  .btn-secondary:hover {
+    background-color: #0b7dda;
+  }
+
+  .skills-suggestions {
+    margin-top: 2rem;
+    padding: 1rem;
+    background: #f0f8f0;
+    border-left: 4px solid #4CAF50;
+    border-radius: 4px;
+  }
+
+  .skills-list {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.5rem;
+  }
+
+  .skills-list li {
+    padding: 0.5rem;
+    background: white;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    color: #555;
+  }
+
+  .info-box {
+    padding: 1rem;
+    background: #e3f2fd;
+    border-left: 4px solid #2196F3;
+    border-radius: 4px;
+    color: #1565c0;
+  }
+
+  .analysis-summary {
+    background: #f9f9f9;
+    padding: 1.5rem;
+    border-radius: 6px;
+    margin-bottom: 2rem;
+    border-left: 4px solid #4CAF50;
+  }
+
+  .overall-coverage {
+    font-size: 1.3rem;
+    color: #2e7d32;
+    margin-bottom: 1rem;
+  }
+
+  .coverage-list {
+    list-style: none;
+    padding: 0;
+  }
+
+  .coverage-list li {
+    padding: 0.5rem 0;
+    color: #555;
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid #eee;
+  }
+
+  .coverage-list li:last-child {
+    border-bottom: none;
+  }
+
+  .skill-name {
+    font-weight: bold;
+    color: #333;
+  }
+
+  .coverage-percentage {
+    color: #4CAF50;
+    font-weight: bold;
+  }
+
+  .coverage-matrix {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .coverage-matrix thead {
+    background-color: #f5f5f5;
+    border-bottom: 2px solid #ddd;
+  }
+
+  .coverage-matrix th {
+    padding: 1rem;
+    text-align: left;
+    font-weight: bold;
+    color: #333;
+    border: 1px solid #ddd;
+  }
+
+  .coverage-matrix td {
+    padding: 0.75rem 1rem;
+    border: 1px solid #eee;
+  }
+
+  .coverage-matrix tbody tr:hover {
+    background-color: #f9f9f9;
+  }
+
+  .coverage-matrix tbody tr.covered {
+    background-color: #f0f8f0;
+  }
+
+  .coverage-matrix tbody tr.partial {
+    background-color: #fff3cd;
+  }
+
+  .coverage-matrix tbody tr.gap {
+    background-color: #f8d7da;
+  }
+
+  .covered-icon {
+    color: #4CAF50;
+    font-weight: bold;
+    margin-right: 0.25rem;
+  }
+
+  .gap-icon {
+    font-weight: bold;
+    margin-right: 0.25rem;
+  }
+
+  .error-message {
+    padding: 1.5rem;
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+    color: #721c24;
+    margin-bottom: 1.5rem;
+  }
+
+  .error-message p {
+    margin: 0;
+    color: #721c24;
+  }
+
+  .results-actions, .error-actions {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #eee;
+  }
+
+  @media (max-width: 768px) {
+    .gap-analysis-container {
+      margin: 1rem;
+      padding: 1rem;
+    }
+
+    .skills-list {
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    }
+
+    .coverage-matrix {
+      font-size: 0.9rem;
+    }
+
+    .coverage-matrix th, .coverage-matrix td {
+      padding: 0.5rem;
+    }
+
+    textarea {
+      max-width: 100%;
+    }
+  }
+</style>
+{% endblock %}
