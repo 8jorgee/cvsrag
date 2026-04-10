@@ -10,8 +10,7 @@
     <h1>Skill Gap Analysis</h1>
     <p>Enter the skills your project requires, and we'll show you which team members cover each skill.</p>
 
-    <form method="post" action="/gap-analysis">
-      <input type="hidden" name="csrftoken" id="gap-csrf-token" value="">
+    <form id="gap-form" method="post" action="/gap-analysis">
       <div class="form-group">
         <label for="skills_input">Required Skills:</label>
         <textarea
@@ -402,9 +401,19 @@
 </style>
 <script>
   (function() {
-    var token = document.cookie.split('; ').find(function(r) { return r.startsWith('csrftoken='); });
-    var el = document.getElementById('gap-csrf-token');
-    if (el && token) el.value = token.split('=')[1];
+    var form = document.getElementById('gap-form');
+    if (!form) return;
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var token = (document.cookie.split('; ').find(function(r) { return r.startsWith('csrftoken='); }) || '').split('=')[1] || '';
+      fetch('/gap-analysis', {
+        method: 'POST',
+        headers: { 'x-csrftoken': token },
+        body: new FormData(form)
+      }).then(function(r) { return r.text(); }).then(function(html) {
+        document.open(); document.write(html); document.close();
+      });
+    });
   })();
 </script>
 {% endblock %}

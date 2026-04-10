@@ -12,7 +12,6 @@
 
   <!-- Export buttons form -->
   <form id="export-form" method="post" action="/export" style="display: inline-block;">
-    <input type="hidden" name="csrftoken" id="export-csrf-token" value="">
     <!-- Search query and mode -->
     <input type="hidden" name="query" value="{{ query }}">
     <input type="hidden" name="mode" value="quick">
@@ -200,8 +199,29 @@
 {% endif %}
 <script>
   (function() {
-    var token = document.cookie.split('; ').find(function(r) { return r.startsWith('csrftoken='); });
-    var el = document.getElementById('export-csrf-token');
-    if (el && token) el.value = token.split('=')[1];
+    var form = document.getElementById('export-form');
+    if (!form) return;
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var format = (e.submitter && e.submitter.value) || 'csv';
+      var token = (document.cookie.split('; ').find(function(r) { return r.startsWith('csrftoken='); }) || '').split('=')[1] || '';
+      var body = new FormData(form);
+      body.set('export_format', format);
+      fetch('/export', {
+        method: 'POST',
+        headers: { 'x-csrftoken': token },
+        body: body
+      }).then(function(r) {
+        var disp = r.headers.get('Content-Disposition') || '';
+        var match = disp.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        var filename = match ? match[1].replace(/['"]/g, '') : ('export.' + format);
+        return r.blob().then(function(blob) { return { blob: blob, filename: filename }; });
+      }).then(function(d) {
+        var url = URL.createObjectURL(d.blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = d.filename; a.click();
+        URL.revokeObjectURL(url);
+      });
+    });
   })();
 </script>

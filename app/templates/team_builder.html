@@ -8,8 +8,7 @@
     <h1>Team Composition Assistant</h1>
     <p>Describe your project and required skills, and we'll suggest an optimal team from your available consultants.</p>
 
-    <form method="post" action="/team-builder">
-      <input type="hidden" name="csrftoken" id="team-csrf-token" value="">
+    <form id="team-form" method="post" action="/team-builder">
       <fieldset>
         <label for="project-desc"><strong>Project Description</strong></label>
         <textarea
@@ -352,9 +351,19 @@
 </style>
 <script>
   (function() {
-    var token = document.cookie.split('; ').find(function(r) { return r.startsWith('csrftoken='); });
-    var el = document.getElementById('team-csrf-token');
-    if (el && token) el.value = token.split('=')[1];
+    var form = document.getElementById('team-form');
+    if (!form) return;
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var token = (document.cookie.split('; ').find(function(r) { return r.startsWith('csrftoken='); }) || '').split('=')[1] || '';
+      fetch('/team-builder', {
+        method: 'POST',
+        headers: { 'x-csrftoken': token },
+        body: new FormData(form)
+      }).then(function(r) { return r.text(); }).then(function(html) {
+        document.open(); document.write(html); document.close();
+      });
+    });
   })();
 </script>
 {% endblock %}
