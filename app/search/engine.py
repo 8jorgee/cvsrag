@@ -617,8 +617,8 @@ def calculate_skill_coverage(required_skills: list[str]) -> dict:
             "overall_coverage": 0.0,
         }
 
-    # Fetch all profiles
-    all_docs = collection.get(include=["metadatas"])
+    # Fetch all profiles (documents included for text-fallback when skills metadata is empty)
+    all_docs = collection.get(include=["metadatas", "documents"])
     if not all_docs["ids"]:
         return {
             "total_profiles": 0,
@@ -626,6 +626,8 @@ def calculate_skill_coverage(required_skills: list[str]) -> dict:
             "profiles": [],
             "overall_coverage": 0.0,
         }
+
+    documents = all_docs.get("documents", [])
 
     # Build profile list with normalized skills
     profiles = []
@@ -638,10 +640,12 @@ def calculate_skill_coverage(required_skills: list[str]) -> dict:
         except (json.JSONDecodeError, TypeError):
             skills = []
 
+        raw_document = documents[i] if i < len(documents) else ""
         profiles.append({
             "id": doc_id,
             "name": name,
             "skills": skills,
+            "document": raw_document.lower() if raw_document else "",
         })
 
     # Calculate coverage for each required skill
@@ -650,8 +654,13 @@ def calculate_skill_coverage(required_skills: list[str]) -> dict:
 
     for required_skill in normalized_required:
         matching_ids = []
+        pattern = re.compile(r'\b' + re.escape(required_skill) + r'\b', re.IGNORECASE)
         for profile in profiles:
             if required_skill in profile["skills"]:
+                # Structured metadata match
+                matching_ids.append(profile["id"])
+            elif not profile["skills"] and pattern.search(profile["document"]):
+                # Fallback: skills metadata is empty (LLM parsing failed), search raw text
                 matching_ids.append(profile["id"])
 
         count = len(matching_ids)
