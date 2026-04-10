@@ -576,6 +576,106 @@ def get_search_history(db_conn: sqlite3.Connection, session_id: str) -> list[dic
     ]
 
 
+def calculate_skill_coverage(required_skills: list[str]) -> dict:
+    """
+    Calculate skill coverage across all profiles.
+
+    Args:
+        required_skills: List of skill names (case-insensitive)
+
+    Returns:
+        dict with keys:
+        - total_profiles: int
+        - skill_coverage: dict[skill_name] = {
+            "count": int (profiles with this skill),
+            "percentage": float (0-100),
+            "gaps": int (profiles without this skill),
+            "profile_ids": list[str] (IDs of profiles with this skill)
+          }
+        - profiles: list[dict] with id, name, skills (for rendering table)
+        - overall_coverage: float (0-100, average coverage across all skills)
+    """
+    collection = get_collection()
+    total_profiles = collection.count()
+
+    if total_profiles == 0:
+        return {
+            "total_profiles": 0,
+            "skill_coverage": {},
+            "profiles": [],
+            "overall_coverage": 0.0,
+        }
+
+    if not required_skills:
+        return {
+            "total_profiles": total_profiles,
+            "skill_coverage": {},
+            "profiles": [],
+            "overall_coverage": 0.0,
+        }
+
+    # Fetch all profiles
+    all_docs = collection.get(include=["metadatas"])
+    if not all_docs["ids"]:
+        return {
+            "total_profiles": 0,
+            "skill_coverage": {},
+            "profiles": [],
+            "overall_coverage": 0.0,
+        }
+
+    # Build profile list with normalized skills
+    profiles = []
+    for i, doc_id in enumerate(all_docs["ids"]):
+        metadata = all_docs["metadatas"][i]
+        name = metadata.get("name", "Unknown")
+        skills_json = metadata.get("skills", "[]")
+        try:
+            skills = [s.lower() for s in json.loads(skills_json)]
+        except (json.JSONDecodeError, TypeError):
+            skills = []
+
+        profiles.append({
+            "id": doc_id,
+            "name": name,
+            "skills": skills,
+        })
+
+    # Calculate coverage for each required skill
+    skill_coverage = {}
+    normalized_required = [s.lower() for s in required_skills]
+
+    for required_skill in normalized_required:
+        matching_ids = []
+        for profile in profiles:
+            if required_skill in profile["skills"]:
+                matching_ids.append(profile["id"])
+
+        count = len(matching_ids)
+        percentage = (count / total_profiles * 100) if total_profiles > 0 else 0.0
+        gaps = total_profiles - count
+
+        skill_coverage[required_skill] = {
+            "count": count,
+            "percentage": percentage,
+            "gaps": gaps,
+            "profile_ids": matching_ids,
+        }
+
+    # Calculate overall coverage as average
+    if skill_coverage:
+        overall_coverage = sum(data["percentage"] for data in skill_coverage.values()) / len(skill_coverage)
+    else:
+        overall_coverage = 0.0
+
+    return {
+        "total_profiles": total_profiles,
+        "skill_coverage": skill_coverage,
+        "profiles": profiles,
+        "overall_coverage": overall_coverage,
+    }
+
+
 def suggest_team_composition(
     project_description: str,
     required_skills: list[str],
