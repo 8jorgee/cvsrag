@@ -491,6 +491,96 @@ async def download_cv(profile_id: str):
     )
 
 
+# ─── Team Composition ───────────────────────────────────────────────────────
+
+@app.get("/team-builder", response_class=HTMLResponse)
+async def team_builder_form(request: Request):
+    """Display team composition assistant form."""
+    collection = get_collection()
+    total = collection.count()
+    all_skills = engine.get_all_skills() if total > 0 else []
+
+    return templates.TemplateResponse(
+        "team_builder.html",
+        {
+            "request": request,
+            "mode": "form",
+            "total_profiles": total,
+            "all_skills": all_skills,
+        },
+    )
+
+
+@app.post("/team-builder", response_class=HTMLResponse)
+async def team_builder_submit(
+    request: Request,
+    project_description: str = Form(""),
+    required_skills: str = Form(""),
+    team_size: str = Form("3"),
+):
+    """Submit team composition request and get Claude suggestions."""
+    # Validate inputs
+    if not project_description or not project_description.strip():
+        return templates.TemplateResponse(
+            "team_builder.html",
+            {
+                "request": request,
+                "mode": "error",
+                "error_message": "Please describe your project",
+                "total_profiles": get_collection().count(),
+                "all_skills": engine.get_all_skills(),
+            },
+        )
+
+    if not required_skills or not required_skills.strip():
+        return templates.TemplateResponse(
+            "team_builder.html",
+            {
+                "request": request,
+                "mode": "error",
+                "error_message": "Please specify required skills",
+                "total_profiles": get_collection().count(),
+                "all_skills": engine.get_all_skills(),
+            },
+        )
+
+    try:
+        team_size = max(1, min(int(team_size), get_collection().count()))
+    except (ValueError, TypeError):
+        team_size = 3
+
+    # Parse skills
+    skills_list = [s.strip() for s in required_skills.replace(',', '\n').split('\n') if s.strip()]
+
+    # Call Claude
+    suggestion = engine.suggest_team_composition(project_description, skills_list, team_size)
+
+    if suggestion.get("error"):
+        return templates.TemplateResponse(
+            "team_builder.html",
+            {
+                "request": request,
+                "mode": "error",
+                "error_message": f"Team composition failed: {suggestion['error']}",
+                "total_profiles": get_collection().count(),
+                "all_skills": engine.get_all_skills(),
+            },
+        )
+
+    return templates.TemplateResponse(
+        "team_builder.html",
+        {
+            "request": request,
+            "mode": "results",
+            "project_description": project_description,
+            "required_skills": skills_list,
+            "team_size": team_size,
+            "suggestion": suggestion,
+            "total_profiles": get_collection().count(),
+        },
+    )
+
+
 # ─── Admin ───────────────────────────────────────────────────────────────────
 
 @app.get("/admin", response_class=HTMLResponse)
